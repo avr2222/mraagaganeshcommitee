@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ganesh Pooja Expense Portal</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <div class="brand">
+      <span class="brand-icon">🕉️</span>
+      <div>
+        <h1 id="eventTitle">Ganesh Pooja Expense Portal</h1>
+        <p id="eventSubtitle" class="subtitle">Community contributions &amp; expense tracker</p>
+      </div>
+    </div>
+    <button id="settingsBtn" class="icon-btn" title="Event Settings">⚙️ Settings</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+  <button class="tab-btn" data-tab="contributions">Contributions</button>
+  <button class="tab-btn" data-tab="expenses">Expenses</button>
+  <button class="tab-btn" data-tab="reports">Reports</button>
+</nav>
+
+<main class="container">
+
+  <!-- DASHBOARD -->
+  <section id="dashboard" class="tab-panel active">
+    <div class="cards">
+      <div class="card card-collection">
+        <span class="card-label">Total Collections</span>
+        <span class="card-value" id="totalCollections">₹0</span>
+      </div>
+      <div class="card card-expense">
+        <span class="card-label">Total Expenses</span>
+        <span class="card-value" id="totalExpenses">₹0</span>
+      </div>
+      <div class="card card-balance">
+        <span class="card-label">Balance in Hand</span>
+        <span class="card-value" id="balanceAmount">₹0</span>
+      </div>
+      <div class="card card-count">
+        <span class="card-label">Contributors</span>
+        <span class="card-value" id="contributorCount">0</span>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <div class="panel">
+        <h2>Expenses by Category</h2>
+        <div id="categoryBreakdown" class="breakdown-list"></div>
+      </div>
+      <div class="panel">
+        <h2>Recent Activity</h2>
+        <div id="recentActivity" class="activity-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTRIBUTIONS -->
+  <section id="contributions" class="tab-panel">
+    <div class="panel form-panel">
+      <h2 id="contribFormTitle">Add Contribution</h2>
+      <form id="contributionForm" class="entry-form">
+        <input type="hidden" id="contribId">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="contribName">Donor Name *</label>
+            <input type="text" id="contribName" required placeholder="e.g. Rao Family">
+          </div>
+          <div class="form-group">
+            <label for="contribPhone">Phone</label>
+            <input type="tel" id="contribPhone" placeholder="Optional">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="contribAmount">Amount (₹) *</label>
+            <input type="number" id="contribAmount" min="0" step="1" required placeholder="0">
+          </div>
+          <div class="form-group">
+            <label for="contribDate">Date *</label>
+            <input type="date" id="contribDate" required>
+          </div>
+          <div class="form-group">
+            <label for="contribMode">Payment Mode</label>
+            <select id="contribMode">
+              <option value="Cash">Cash</option>
+              <option value="UPI">UPI</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Cheque">Cheque</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="contribNotes">Notes</label>
+          <input type="text" id="contribNotes" placeholder="Optional">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="contribSubmitBtn">Add Contribution</button>
+          <button type="button" class="btn btn-secondary hidden" id="contribCancelBtn">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header-row">
+        <h2>All Contributions</h2>
+        <input type="search" id="contribSearch" class="search-input" placeholder="Search by name...">
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="contributionsTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Donor</th>
+              <th>Phone</th>
+              <th>Mode</th>
+              <th>Notes</th>
+              <th class="num">Amount</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty-state hidden" id="contributionsEmpty">No contributions recorded yet. Add the first one above.</p>
+    </div>
+  </section>
+
+  <!-- EXPENSES -->
+  <section id="expenses" class="tab-panel">
+    <div class="panel form-panel">
+      <h2 id="expenseFormTitle">Add Expense</h2>
+      <form id="expenseForm" class="entry-form">
+        <input type="hidden" id="expenseId">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="expenseDesc">Description *</label>
+            <input type="text" id="expenseDesc" required placeholder="e.g. Idol purchase">
+          </div>
+          <div class="form-group">
+            <label for="expenseCategory">Category *</label>
+            <select id="expenseCategory" required>
+              <option value="Idol &amp; Decoration">Idol &amp; Decoration</option>
+              <option value="Pandal Setup">Pandal Setup</option>
+              <option value="Pooja Samagri">Pooja Samagri</option>
+              <option value="Priest / Purohit">Priest / Purohit</option>
+              <option value="Prasad &amp; Food">Prasad &amp; Food</option>
+              <option value="Sound &amp; Lighting">Sound &amp; Lighting</option>
+              <option value="Cultural Events">Cultural Events</option>
+              <option value="Visarjan / Immersion">Visarjan / Immersion</option>
+              <option value="Printing &amp; Invitations">Printing &amp; Invitations</option>
+              <option value="Permissions &amp; Security">Permissions &amp; Security</option>
+              <option value="Miscellaneous">Miscellaneous</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="expenseAmount">Amount (₹) *</label>
+            <input type="number" id="expenseAmount" min="0" step="1" required placeholder="0">
+          </div>
+          <div class="form-group">
+            <label for="expenseDate">Date *</label>
+            <input type="date" id="expenseDate" required>
+          </div>
+          <div class="form-group">
+            <label for="expenseVendor">Paid To / Vendor</label>
+            <input type="text" id="expenseVendor" placeholder="Optional">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="expenseNotes">Notes</label>
+          <input type="text" id="expenseNotes" placeholder="Optional">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="expenseSubmitBtn">Add Expense</button>
+          <button type="button" class="btn btn-secondary hidden" id="expenseCancelBtn">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header-row">
+        <h2>All Expenses</h2>
+        <input type="search" id="expenseSearch" class="search-input" placeholder="Search by description...">
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="expensesTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Description</th>
+              <th>Category</th>
+              <th>Vendor</th>
+              <th>Notes</th>
+              <th class="num">Amount</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty-state hidden" id="expensesEmpty">No expenses recorded yet. Add the first one above.</p>
+    </div>
+  </section>
+
+  <!-- REPORTS -->
+  <section id="reports" class="tab-panel">
+    <div class="panel">
+      <h2>Export &amp; Print</h2>
+      <p class="hint">Download your data as CSV for record keeping, or print a summary report for the committee.</p>
+      <div class="report-actions">
+        <button class="btn btn-primary" id="exportContribCsv">⬇️ Export Contributions CSV</button>
+        <button class="btn btn-primary" id="exportExpenseCsv">⬇️ Export Expenses CSV</button>
+        <button class="btn btn-secondary" id="printReport">🖨️ Print Summary Report</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Backup &amp; Restore</h2>
+      <p class="hint">All data is stored locally in this browser. Export a backup regularly, especially before clearing browser data.</p>
+      <div class="report-actions">
+        <button class="btn btn-secondary" id="exportBackup">⬇️ Download Full Backup (JSON)</button>
+        <label class="btn btn-secondary file-btn">
+          ⬆️ Restore from Backup
+          <input type="file" id="importBackup" accept="application/json" hidden>
+        </label>
+      </div>
+    </div>
+
+    <div class="panel danger-panel">
+      <h2>Danger Zone</h2>
+      <p class="hint">This permanently clears all contributions and expenses in this browser.</p>
+      <button class="btn btn-danger" id="clearAllBtn">🗑️ Clear All Data</button>
+    </div>
+  </section>
+
+</main>
+
+<!-- Printable summary (only visible when printing) -->
+<div id="printArea" class="print-only">
+  <h1 id="printTitle"></h1>
+  <p id="printSubtitle"></p>
+  <table>
+    <tr><td>Total Collections</td><td id="printTotalCollections"></td></tr>
+    <tr><td>Total Expenses</td><td id="printTotalExpenses"></td></tr>
+    <tr><td>Balance in Hand</td><td id="printBalance"></td></tr>
+  </table>
+  <h2>Expenses by Category</h2>
+  <table id="printCategoryTable"></table>
+  <p class="print-footer">Generated on <span id="printDate"></span></p>
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>Event Settings</h2>
+    <div class="form-group">
+      <label for="settingsEventName">Event / Committee Name</label>
+      <input type="text" id="settingsEventName" placeholder="e.g. Ganesh Pooja Committee 2026">
+    </div>
+    <div class="form-group">
+      <label for="settingsSubtitle">Subtitle</label>
+      <input type="text" id="settingsSubtitle" placeholder="e.g. Community contributions & expense tracker">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" id="settingsSaveBtn">Save</button>
+      <button class="btn btn-secondary" id="settingsCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
