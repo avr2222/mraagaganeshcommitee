@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    body{margin:0;-webkit-font-smoothing:antialiased}
+    a{color:#F97316;text-decoration:none}
+    a:hover{color:#EA580C;text-decoration:underline}
+    input::placeholder,textarea::placeholder{color:#94A3B8}
+    select,input,textarea,button{font-family:inherit}
+  </style>
+</helmet>
+<div style="display:flex;height:100vh;width:100%;overflow:hidden;background:#F8FAFC;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1E293B">
+
+  <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ true }}">
+    <div style="width:236px;flex-shrink:0;background:#fff;border-right:1px solid #E2E8F0;display:flex;flex-direction:column;padding:20px 14px">
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 8px 22px 8px">
+        <div style="width:36px;height:36px;border-radius:10px;background:#FFF7ED;display:flex;align-items:center;justify-content:center;color:#F97316;flex-shrink:0">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 16c0 3 3.5 5 8 5s8-2 8-5-4-9-8-9-8 6-8 9z"/><ellipse cx="12" cy="16" rx="7" ry="2"/><path d="M12 3v4"/><circle cx="12" cy="2.3" r="1" fill="currentColor" stroke="none"/></svg>
+        </div>
+        <div>
+          <div style="font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;color:#1E293B;line-height:1.2">Ganesh Pooja</div>
+          <div style="font-size:11px;color:#94A3B8;font-weight:600">Expense Portal</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex:1">
+        <button onClick="{{ goDashboard }}" style="{{ navStyles.dashboard }}">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V9.5"/></svg>
+          <span>Dashboard</span>
+        </button>
+        <button onClick="{{ goFlats }}" style="{{ navStyles.flats }}">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 8h1M14 8h1M9 12h1M14 12h1M9 16h2"/></svg>
+          <span>Flats</span>
+        </button>
+        <button onClick="{{ goDonationsNav }}" style="{{ navStyles.donations }}">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><text x="12" y="16" text-anchor="middle" font-size="10" font-weight="700" stroke="none" fill="currentColor">₹</text></svg>
+          <span>Donations</span>
+        </button>
+        <button onClick="{{ goExpensesNav }}" style="{{ navStyles.expenses }}">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path d="M9 8h6M9 12h6"/></svg>
+          <span>Expenses</span>
+        </button>
+        <button onClick="{{ goTransactionsNav }}" style="{{ navStyles.transactions }}">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4L4 7h3zM7 4v13M17 20l3-3h-3zM17 20V7"/></svg>
+          <span>Transactions</span>
+        </button>
+      </div>
+      <button onClick="{{ settingsClick }}" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border:none;background:transparent;color:#94A3B8;font-size:13px;font-weight:600;cursor:pointer;text-align:left;border-top:1px solid #F1F5F9;margin-top:8px;padding-top:16px">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09a1.7 1.7 0 001.55-1 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34H9a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.55 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87V9a1.7 1.7 0 001.55 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
+        Settings
+      </button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;top:0;left:0;right:0;background:#fff;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;gap:10px;padding:14px 16px;z-index:30">
+      <div style="width:32px;height:32px;border-radius:9px;background:#FFF7ED;display:flex;align-items:center;justify-content:center;color:#F97316;flex-shrink:0">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 16c0 3 3.5 5 8 5s8-2 8-5-4-9-8-9-8 6-8 9z"/><ellipse cx="12" cy="16" rx="7" ry="2"/><path d="M12 3v4"/><circle cx="12" cy="2.3" r="1" fill="currentColor" stroke="none"/></svg>
+      </div>
+      <div style="font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;color:#1E293B">Ganesh Pooja Portal</div>
+    </div>
+  </sc-if>
+
+  <div style="flex:1;overflow-y:auto;{{ contentPadStyle }}">
+
+    <sc-if value="{{ screenIsDashboard }}" hint-placeholder-val="{{ true }}">
+      <div style="max-width:1080px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:22px">
+          <div>
+            <div style="font-size:12px;color:#94A3B8;font-weight:700;letter-spacing:.04em;margin-bottom:4px">GANESH POOJA COMMITTEE</div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <h1 style="font-family:'Manrope',sans-serif;font-size:26px;font-weight:800;margin:0;color:#1E293B">Ganesh Pooja {{ year }}</h1>
+              <select value="{{ year }}" onChange="{{ setYear }}" style="border:1px solid #E2E8F0;border-radius:10px;padding:7px 10px;font-size:13px;font-weight:700;color:#475569;background:#fff;cursor:pointer">
+                <option value="2026">2026</option>
+                <option value="2025">2025</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button onClick="{{ addDonationClick }}" style="background:#F97316;color:#fff;border:none;border-radius:12px;padding:12px 18px;font-size:14px;font-weight:700;cursor:pointer">+ Add Donation</button>
+            <button onClick="{{ openExpenseModal }}" style="background:#DC2626;color:#fff;border:none;border-radius:12px;padding:12px 18px;font-size:14px;font-weight:700;cursor:pointer">+ Add Expense</button>
+          </div>
+        </div>
+
+        <sc-if value="{{ yearHasData }}" hint-placeholder-val="{{ true }}">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:20px">
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:18px">
+              <div style="font-size:13px;color:#64748B;font-weight:600;margin-bottom:8px">Total Collected</div>
+              <div style="font-family:'Manrope',sans-serif;font-size:28px;font-weight:800;color:#16A34A">{{ totalCollectedFmt }}</div>
+            </div>
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:18px">
+              <div style="font-size:13px;color:#64748B;font-weight:600;margin-bottom:8px">Total Expenses</div>
+              <div style="font-family:'Manrope',sans-serif;font-size:28px;font-weight:800;color:#DC2626">{{ totalExpensesFmt }}</div>
+            </div>
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:18px">
+              <div style="font-size:13px;color:#64748B;font-weight:600;margin-bottom:8px">Current Balance</div>
+              <div style="font-family:'Manrope',sans-serif;font-size:28px;font-weight:800;color:#2563EB">{{ balanceFmt }}</div>
+            </div>
+            <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:18px">
+              <div style="font-size:13px;color:#64748B;font-weight:600;margin-bottom:8px">Flats Contributed</div>
+              <div style="font-family:'Manrope',sans-serif;font-size:28px;font-weight:800;color:#F97316">{{ contributedRatio }}</div>
+            </div>
+          </div>
+
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:20px;margin-bottom:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <div style="font-size:15px;font-weight:700;color:#1E293B">{{ contributedRatio }} Flats Contributed</div>
+              <button onClick="{{ viewFlatsFromDashboard }}" style="border:1px solid #E2E8F0;background:#F8FAFC;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;color:#475569;cursor:pointer">View Flats</button>
+            </div>
+            <div style="height:10px;border-radius:6px;background:#F1F5F9;overflow:hidden;margin-bottom:12px">
+              <div style="height:100%;border-radius:6px;background:#16A34A;width:{{ contributedPct }}%"></div>
+            </div>
+            <div style="display:flex;gap:20px;font-size:13px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:6px;color:#475569"><span style="width:8px;height:8px;border-radius:50%;background:#16A34A;display:inline-block"></span>{{ contributedCount }} Contributed</div>
+              <div style="display:flex;align-items:center;gap:6px;color:#94A3B8"><span style="width:8px;height:8px;border-radius:50%;background:#CBD5E1;display:inline-block"></span>{{ notContributedCount }} Not Contributed</div>
+            </div>
+          </div>
+
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:20px;margin-bottom:20px">
+            <div style="font-size:15px;font-weight:700;color:#1E293B;margin-bottom:16px">Income vs Expenses</div>
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;color:#475569;margin-bottom:6px"><span>Income</span><span style="color:#16A34A;font-weight:700">{{ totalCollectedFmt }}</span></div>
+                <div style="height:14px;border-radius:8px;background:#F1F5F9;overflow:hidden"><div style="height:100%;border-radius:8px;background:#16A34A;width:{{ incomePct }}%"></div></div>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;color:#475569;margin-bottom:6px"><span>Expenses</span><span style="color:#DC2626;font-weight:700">{{ totalExpensesFmt }}</span></div>
+                <div style="height:14px;border-radius:8px;background:#F1F5F9;overflow:hidden"><div style="height:100%;border-radius:8px;background:#DC2626;width:{{ expensePct }}%"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:20px">
+            <div style="font-size:15px;font-weight:700;color:#1E293B;margin-bottom:8px">Recent Transactions</div>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ recentTransactions }}" as="tx" hint-placeholder-count="5">
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #F1F5F9">
+                  <div style="display:flex;align-items:center;gap:12px">
+                    <span style="width:8px;height:8px;border-radius:50%;background:{{ tx.amountColor }};display:inline-block;flex-shrink:0"></span>
+                    <div>
+                      <div style="font-size:14px;font-weight:600;color:#1E293B">{{ tx.title }}</div>
+                      <div style="font-size:12px;color:#94A3B8">{{ tx.subtitle }}</div>
+                    </div>
+                  </div>
+                  <div style="font-size:14px;font-weight:700;color:{{ tx.amountColor }}">{{ tx.amountSigned }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <button onClick="{{ goTransactionsNav }}" style="margin-top:10px;border:none;background:none;color:#F97316;font-size:13px;font-weight:700;cursor:pointer;padding:0">View All Transactions →</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ yearNoData }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:60px 20px;text-align:center;color:#94A3B8">
+            <div style="font-size:15px;font-weight:700;color:#475569;margin-bottom:4px">No data for {{ year }} yet</div>
+            <div style="font-size:13px">Switch to 2026 to see this year's Ganesh Pooja collections.</div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ screenIsFlats }}" hint-placeholder-val="{{ false }}">
+      <div>
+        <div style="margin-bottom:18px">
+          <h1 style="font-family:'Manrope',sans-serif;font-size:24px;font-weight:800;color:#1E293B;margin:0 0 4px">Flats</h1>
+          <div style="font-size:13px;color:#94A3B8">{{ totalFlats }} units</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+          <div style="display:flex;gap:4px;background:#F1F5F9;padding:4px;border-radius:12px">
+            <button onClick="{{ filterAll }}" style="{{ filterAllStyle }}">All</button>
+            <button onClick="{{ filterContributed }}" style="{{ filterContributedStyle }}">Contributed</button>
+            <button onClick="{{ filterNot }}" style="{{ filterNotStyle }}">Not Contributed</button>
+          </div>
+          <input placeholder="Search flat..." value="{{ flatsSearch }}" onChange="{{ setFlatsSearch }}" style="border:1px solid #E2E8F0;border-radius:10px;padding:9px 14px;font-size:13px;min-width:200px;outline:none;box-sizing:border-box" />
+        </div>
+
+        <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ filteredFlats }}" as="f" hint-placeholder-count="6">
+              <div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:16px;display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <div style="font-size:15px;font-weight:700;color:#1E293B;margin-bottom:4px">{{ f.label }}</div>
+                  <div style="font-size:12px;color:#94A3B8">Owner: {{ f.owner }} · Tenant: {{ f.tenant }}</div>
+                  <div style="font-size:13px;font-weight:700;color:#1E293B;margin-top:6px">{{ f.contributionFmt }}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:{{ f.statusColor }}">
+                  <span style="width:8px;height:8px;border-radius:50%;background:{{ f.statusColor }};display:inline-block"></span>{{ f.statusText }}
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ true }}">
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse">
+              <thead>
+                <tr style="background:#F8FAFC;border-bottom:1px solid #E2E8F0">
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">FLAT</th>
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">OWNER</th>
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">TENANT</th>
+                  <th style="text-align:right;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">CONTRIBUTION</th>
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">STATUS</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{ filteredFlats }}" as="f" hint-placeholder-count="8">
+                  <tr style="border-bottom:1px solid #F1F5F9">
+                    <td style="padding:12px 16px;font-size:14px;font-weight:700;color:#1E293B">{{ f.label }}</td>
+                    <td style="padding:12px 16px;font-size:14px;color:#475569">{{ f.owner }}</td>
+                    <td style="padding:12px 16px;font-size:14px;color:#94A3B8">{{ f.tenant }}</td>
+                    <td style="padding:12px 16px;font-size:14px;font-weight:700;color:#1E293B;text-align:right">{{ f.contributionFmt }}</td>
+                    <td style="padding:12px 16px;font-size:13px;font-weight:700;color:{{ f.statusColor }}">
+                      <span style="width:8px;height:8px;border-radius:50%;background:{{ f.statusColor }};display:inline-block;margin-right:6px"></span>{{ f.statusText }}
+                    </td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ screenIsDonations }}" hint-placeholder-val="{{ false }}">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;margin-bottom:20px">
+          <div>
+            <h1 style="font-family:'Manrope',sans-serif;font-size:24px;font-weight:800;color:#1E293B;margin:0 0 4px">Donations</h1>
+            <div style="font-size:14px;color:#64748B">Total Collected: <span style="color:#16A34A;font-weight:700">{{ totalCollectedFmt }}</span></div>
+          </div>
+          <button onClick="{{ addDonationClick }}" style="background:#F97316;color:#fff;border:none;border-radius:12px;padding:12px 18px;font-size:14px;font-weight:700;cursor:pointer">+ Add Donation</button>
+        </div>
+        <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ donationsSorted }}" as="d" hint-placeholder-count="6">
+              <div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:16px;display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <div style="font-size:14px;font-weight:700;color:#1E293B">{{ d.title }}</div>
+                  <div style="font-size:12px;color:#94A3B8;margin-top:2px">{{ d.subtitle }} · {{ d.dateFmt }}</div>
+                </div>
+                <div style="font-size:15px;font-weight:800;color:#16A34A">{{ d.amountFmt }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ true }}">
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse">
+              <thead>
+                <tr style="background:#F8FAFC;border-bottom:1px solid #E2E8F0">
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">DONOR</th>
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">MODE</th>
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">DATE</th>
+                  <th style="text-align:right;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">AMOUNT</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{ donationsSorted }}" as="d" hint-placeholder-count="8">
+                  <tr style="border-bottom:1px solid #F1F5F9">
+                    <td style="padding:12px 16px;font-size:14px;font-weight:600;color:#1E293B">{{ d.title }}</td>
+                    <td style="padding:12px 16px;font-size:14px;color:#475569">{{ d.mode }}</td>
+                    <td style="padding:12px 16px;font-size:14px;color:#94A3B8">{{ d.dateFmt }}</td>
+                    <td style="padding:12px 16px;font-size:14px;font-weight:700;color:#16A34A;text-align:right">{{ d.amountFmt }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ screenIsExpenses }}" hint-placeholder-val="{{ false }}">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;margin-bottom:20px">
+          <div>
+            <h1 style="font-family:'Manrope',sans-serif;font-size:24px;font-weight:800;color:#1E293B;margin:0 0 4px">Expenses</h1>
+            <div style="font-size:14px;color:#64748B">Total Expenses: <span style="color:#DC2626;font-weight:700">{{ totalExpensesFmt }}</span></div>
+          </div>
+          <button onClick="{{ openExpenseModal }}" style="background:#DC2626;color:#fff;border:none;border-radius:12px;padding:12px 18px;font-size:14px;font-weight:700;cursor:pointer">+ Add Expense</button>
+        </div>
+
+        <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:20px;margin-bottom:20px">
+          <div style="font-size:15px;font-weight:700;color:#1E293B;margin-bottom:16px">Expenses by Category</div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <sc-for list="{{ categoryBreakdown }}" as="c" hint-placeholder-count="6">
+              <div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;color:#475569;margin-bottom:6px"><span>{{ c.category }}</span><span style="color:#DC2626;font-weight:700">{{ c.amountFmt }}</span></div>
+                <div style="height:10px;border-radius:6px;background:#F1F5F9;overflow:hidden"><div style="height:100%;border-radius:6px;background:#DC2626;width:{{ c.pct }}%"></div></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ expensesSorted }}" as="e" hint-placeholder-count="6">
+              <div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:16px;display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <div style="font-size:14px;font-weight:700;color:#1E293B">{{ e.title }}</div>
+                  <div style="font-size:12px;color:#94A3B8;margin-top:2px">{{ e.subtitle }} · {{ e.dateFmt }}</div>
+                </div>
+                <div style="font-size:15px;font-weight:800;color:#DC2626">{{ e.amountFmt }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ true }}">
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse">
+              <thead>
+                <tr style="background:#F8FAFC;border-bottom:1px solid #E2E8F0">
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">CATEGORY</th>
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">DESCRIPTION</th>
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">MODE</th>
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">DATE</th>
+                  <th style="text-align:right;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">AMOUNT</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{ expensesSorted }}" as="e" hint-placeholder-count="8">
+                  <tr style="border-bottom:1px solid #F1F5F9">
+                    <td style="padding:12px 16px;font-size:14px;font-weight:700;color:#1E293B">{{ e.title }}</td>
+                    <td style="padding:12px 16px;font-size:14px;color:#475569">{{ e.description }}</td>
+                    <td style="padding:12px 16px;font-size:14px;color:#94A3B8">{{ e.mode }}</td>
+                    <td style="padding:12px 16px;font-size:14px;color:#94A3B8">{{ e.dateFmt }}</td>
+                    <td style="padding:12px 16px;font-size:14px;font-weight:700;color:#DC2626;text-align:right">{{ e.amountFmt }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ screenIsTransactions }}" hint-placeholder-val="{{ false }}">
+      <div>
+        <h1 style="font-family:'Manrope',sans-serif;font-size:24px;font-weight:800;color:#1E293B;margin:0 0 16px">Transactions</h1>
+        <div style="display:flex;gap:4px;background:#F1F5F9;padding:4px;border-radius:12px;margin-bottom:16px;width:fit-content">
+          <button onClick="{{ txnFilterAllClick }}" style="{{ txnFilterAllStyle }}">All</button>
+          <button onClick="{{ txnFilterInClick }}" style="{{ txnFilterInStyle }}">Money In</button>
+          <button onClick="{{ txnFilterOutClick }}" style="{{ txnFilterOutStyle }}">Money Out</button>
+        </div>
+        <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ filteredTransactions }}" as="tx" hint-placeholder-count="6">
+              <div style="background:#fff;border:1px solid #E2E8F0;border-left:3px solid {{ tx.amountColor }};border-radius:14px;padding:16px;display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <div style="font-size:14px;font-weight:700;color:#1E293B">{{ tx.title }}</div>
+                  <div style="font-size:12px;color:#94A3B8;margin-top:2px">{{ tx.subtitle }} · {{ tx.dateFmt }}</div>
+                </div>
+                <div style="font-size:15px;font-weight:800;color:{{ tx.amountColor }}">{{ tx.amountSigned }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ true }}">
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:16px;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse">
+              <thead>
+                <tr style="background:#F8FAFC;border-bottom:1px solid #E2E8F0">
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">TYPE</th>
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">DETAILS</th>
+                  <th style="text-align:left;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">DATE</th>
+                  <th style="text-align:right;padding:12px 16px;font-size:11px;color:#94A3B8;font-weight:700;letter-spacing:.04em">AMOUNT</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{ filteredTransactions }}" as="tx" hint-placeholder-count="8">
+                  <tr style="border-bottom:1px solid #F1F5F9">
+                    <td style="padding:12px 16px">
+                      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:{{ tx.amountColor }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ tx.amountColor }};display:inline-block"></span>{{ tx.typeLabel }}</span>
+                    </td>
+                    <td style="padding:12px 16px">
+                      <div style="font-size:14px;font-weight:600;color:#1E293B">{{ tx.title }}</div>
+                      <div style="font-size:12px;color:#94A3B8">{{ tx.subtitle }}</div>
+                    </td>
+                    <td style="padding:12px 16px;font-size:14px;color:#94A3B8">{{ tx.dateFmt }}</td>
+                    <td style="padding:12px 16px;font-size:14px;font-weight:700;color:{{ tx.amountColor }};text-align:right">{{ tx.amountSigned }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #E2E8F0;display:flex;justify-content:space-around;padding:6px 4px 10px 4px;z-index:30">
+      <button onClick="{{ goDashboard }}" style="{{ bottomNavStyles.dashboard }}">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V9.5"/></svg>
+        <span>Dashboard</span>
+      </button>
+      <button onClick="{{ goFlats }}" style="{{ bottomNavStyles.flats }}">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 8h1M14 8h1M9 12h1M14 12h1M9 16h2"/></svg>
+        <span>Flats</span>
+      </button>
+      <button onClick="{{ goDonationsNav }}" style="{{ bottomNavStyles.donations }}">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><text x="12" y="16" text-anchor="middle" font-size="10" font-weight="700" stroke="none" fill="currentColor">₹</text></svg>
+        <span>Donations</span>
+      </button>
+      <button onClick="{{ goExpensesNav }}" style="{{ bottomNavStyles.expenses }}">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path d="M9 8h6M9 12h6"/></svg>
+        <span>Expenses</span>
+      </button>
+      <button onClick="{{ goTransactionsNav }}" style="{{ bottomNavStyles.transactions }}">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4L4 7h3zM7 4v13M17 20l3-3h-3zM17 20V7"/></svg>
+        <span>More</span>
+      </button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ donationModalOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50">
+      <div style="background:#fff;border-radius:20px;width:100%;max-width:440px;max-height:90vh;overflow-y:auto;padding:24px;box-sizing:border-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+          <div style="font-size:18px;font-weight:800;color:#1E293B">Add Donation</div>
+          <button onClick="{{ closeDonationModal }}" style="border:none;background:#F1F5F9;width:32px;height:32px;border-radius:10px;cursor:pointer;color:#64748B;font-size:15px">✕</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#94A3B8;display:block;margin-bottom:6px;letter-spacing:.03em">FLAT NUMBER</label>
+            <select value="{{ donationForm.flatId }}" onChange="{{ handleFlatSelect }}" style="width:100%;border:1px solid #E2E8F0;border-radius:10px;padding:11px 12px;font-size:14px;background:#fff;box-sizing:border-box">
+              <option value="">Select flat</option>
+              <sc-for list="{{ flatOptions }}" as="f" hint-placeholder-count="4">
+                <option value="{{ f.id }}">{{ f.label }} — {{ f.owner }}</option>
+              </sc-for>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#94A3B8;display:block;margin-bottom:6px;letter-spacing:.03em">OWNER / TENANT NAME</label>
+            <input value="{{ donationForm.name }}" onChange="{{ handleNameChange }}" placeholder="Name" style="width:100%;border:1px solid #E2E8F0;border-radius:10px;padding:11px 12px;font-size:14px;outline:none;color:#1E293B;box-sizing:border-box" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#94A3B8;display:block;margin-bottom:6px;letter-spacing:.03em">AMOUNT</label>
+            <div style="display:flex;align-items:center;gap:6px;border:1px solid #E2E8F0;border-radius:12px;padding:8px 14px">
+              <span style="font-size:22px;font-weight:800;color:#94A3B8">₹</span>
+              <input value="{{ donationForm.amount }}" onChange="{{ handleAmountChange }}" placeholder="0" type="number" style="border:none;outline:none;font-size:24px;font-weight:800;color:#1E293B;width:100%" />
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#94A3B8;display:block;margin-bottom:6px;letter-spacing:.03em">PAYMENT MODE</label>
+            <div style="display:flex;gap:8px">
+              <button onClick="{{ pickCashDon }}" style="{{ donModeCashStyle }}">Cash</button>
+              <button onClick="{{ pickUpiDon }}" style="{{ donModeUpiStyle }}">UPI</button>
+              <button onClick="{{ pickBankDon }}" style="{{ donModeBankStyle }}">Bank</button>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#94A3B8;display:block;margin-bottom:6px;letter-spacing:.03em">DATE</label>
+            <input type="date" value="{{ donationForm.date }}" onChange="{{ handleDateChange }}" style="width:100%;border:1px solid #E2E8F0;border-radius:10px;padding:11px 12px;font-size:14px;outline:none;color:#1E293B;box-sizing:border-box" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#94A3B8;display:block;margin-bottom:6px;letter-spacing:.03em">NOTE (OPTIONAL)</label>
+            <textarea value="{{ donationForm.note }}" onChange="{{ handleNoteChange }}" placeholder="Add a note" rows="2" style="width:100%;border:1px solid #E2E8F0;border-radius:10px;padding:11px 12px;font-size:14px;outline:none;color:#1E293B;box-sizing:border-box;resize:none"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:20px">
+          <button onClick="{{ closeDonationModal }}" style="flex:1;background:#F1F5F9;color:#475569;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">Cancel</button>
+          <button onClick="{{ submitDonation }}" style="flex:1;background:#F97316;color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">Save Donation</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ expenseModalOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50">
+      <div style="background:#fff;border-radius:20px;width:100%;max-width:460px;max-height:90vh;overflow-y:auto;padding:24px;box-sizing:border-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+          <div style="font-size:18px;font-weight:800;color:#1E293B">Add Expense</div>
+          <button onClick="{{ closeExpenseModal }}" style="border:none;background:#F1F5F9;width:32px;height:32px;border-radius:10px;cursor:pointer;color:#64748B;font-size:15px">✕</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#94A3B8;display:block;margin-bottom:6px;letter-spacing:.03em">CATEGORY</label>
+            <input value="{{ expenseForm.category }}" onChange="{{ handleCategoryChange }}" list="expense-categories" placeholder="Select or type a category" style="width:100%;border:1px solid #E2E8F0;border-radius:10px;padding:11px 12px;font-size:14px;outline:none;color:#1E293B;box-sizing:border-box" />
+            <datalist id="expense-categories">
+              <sc-for list="{{ categories }}" as="c" hint-placeholder-count="8">
+                <option value="{{ c }}"></option>
+              </sc-for>
+            </datalist>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#94A3B8;display:block;margin-bottom:6px;letter-spacing:.03em">DESCRIPTION</label>
+            <input value="{{ expenseForm.description }}" onChange="{{ handleDescChange }}" placeholder="What was this for?" style="width:100%;border:1px solid #E2E8F0;border-radius:10px;padding:11px 12px;font-size:14px;outline:none;color:#1E293B;box-sizing:border-box" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#94A3B8;display:block;margin-bottom:6px;letter-spacing:.03em">AMOUNT</label>
+            <div style="display:flex;align-items:center;gap:6px;border:1px solid #E2E8F0;border-radius:12px;padding:8px 14px">
+              <span style="font-size:22px;font-weight:800;color:#94A3B8">₹</span>
+              <input value="{{ expenseForm.amount }}" onChange="{{ handleExpAmountChange }}" placeholder="0" type="number" style="border:none;outline:none;font-size:24px;font-weight:800;color:#1E293B;width:100%" />
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#94A3B8;display:block;margin-bottom:6px;letter-spacing:.03em">PAYMENT MODE</label>
+            <div style="display:flex;gap:8px">
+              <button onClick="{{ pickCashExp }}" style="{{ expModeCashStyle }}">Cash</button>
+              <button onClick="{{ pickUpiExp }}" style="{{ expModeUpiStyle }}">UPI</button>
+              <button onClick="{{ pickBankExp }}" style="{{ expModeBankStyle }}">Bank</button>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#94A3B8;display:block;margin-bottom:6px;letter-spacing:.03em">DATE</label>
+            <input type="date" value="{{ expenseForm.date }}" onChange="{{ handleExpDateChange }}" style="width:100%;border:1px solid #E2E8F0;border-radius:10px;padding:11px 12px;font-size:14px;outline:none;color:#1E293B;box-sizing:border-box" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#94A3B8;display:block;margin-bottom:6px;letter-spacing:.03em">NOTE (OPTIONAL)</label>
+            <textarea value="{{ expenseForm.note }}" onChange="{{ handleExpNoteChange }}" placeholder="Add a note" rows="2" style="width:100%;border:1px solid #E2E8F0;border-radius:10px;padding:11px 12px;font-size:14px;outline:none;color:#1E293B;box-sizing:border-box;resize:none"></textarea>
+          </div>
+          <button onClick="{{ toggleBillAttached }}" style="border:1px dashed #E2E8F0;background:#F8FAFC;border-radius:10px;padding:12px;font-size:13px;font-weight:600;color:#64748B;cursor:pointer">{{ billLabel }}</button>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:20px">
+          <button onClick="{{ closeExpenseModal }}" style="flex:1;background:#F1F5F9;color:#475569;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">Cancel</button>
+          <button onClick="{{ submitExpense }}" style="flex:1;background:#DC2626;color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer">Save Expense</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1E293B;color:#fff;padding:12px 20px;border-radius:12px;font-size:14px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:60">{{ toast }}</div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+function pad(n){return n<10?'0'+n:''+n;}
+function fmtINR(n){return '₹'+Math.round(n).toLocaleString('en-IN');}
+function fmtDate(d){
+  const dt=new Date(d+'T00:00:00');
+  return dt.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+}
+const OWNERS=['Raj Mehta','Sunita Sharma','Amit Patel','Priya Nair','Vikram Singh','Anita Rao','Suresh Iyer','Deepa Joshi','Manoj Gupta','Kavita Reddy','Arjun Desai','Neha Kulkarni','Ravi Verma','Pooja Bhat','Sanjay Menon','Lakshmi Pillai','Rahul Shah','Meera Krishnan','Vivek Rane','Shalini Rao','Ashok Pandey','Geeta Malhotra','Nitin Kamath','Rekha Chawla','Kiran Bhosale','Anil Kapoor','Divya Subramaniam','Harish Naidu','Swati Deshpande','Prakash Iyengar'];
+const TENANTS=['Amit K.','Karan S.','Sneha R.','Rohan M.','Aisha F.','Varun T.','Tanvi J.','Yash B.','Ishaan L.','Riya D.'];
+function buildFlats(){
+  const flats=[]; let ti=0;
+  for(let i=1;i<=72;i++){
+    const idx=i-1;
+    const hasTenant = idx%3===0;
+    const num = String(i).padStart(3,'0');
+    flats.push({id:'A-'+num, tower:'A', no:i, label:'A-'+num, owner:OWNERS[idx%OWNERS.length], tenant: hasTenant? TENANTS[ti%TENANTS.length] : '-'});
+    if(hasTenant) ti++;
+  }
+  return flats;
+}
+const DON_AMOUNTS=[500,1000,1000,1500,2000,1000,1500,3000,2500,1000];
+const MODES=['UPI','Cash','Bank'];
+function seedDonations(flats){
+  const list=[]; let seq=0;
+  flats.forEach((f,i)=>{
+    if(i%5===4) return;
+    const amount=DON_AMOUNTS[i%DON_AMOUNTS.length];
+    const day=10+(i%8);
+    list.push({id:'d'+i, flatId:f.id, name:f.owner, amount, mode:MODES[i%MODES.length], date:'2026-08-'+pad(day), note:'', seq:seq++});
+  });
+  return list;
+}
+function seedExpenses(){
+  const items=[
+    {category:'Pooja', description:'Pandit fees & pooja samagri', amount:8000, mode:'Cash', date:'2026-08-10'},
+    {category:'Decoration', description:'Stage decoration', amount:15000, mode:'UPI', date:'2026-08-11'},
+    {category:'Food', description:'Prasad & community meals', amount:12000, mode:'Cash', date:'2026-08-14'},
+    {category:'Sound', description:'Sound system rental', amount:9000, mode:'Bank', date:'2026-08-12'},
+    {category:'Lighting', description:'LED lighting setup', amount:6000, mode:'UPI', date:'2026-08-11'},
+    {category:'Flowers', description:'Daily flower arrangements', amount:4500, mode:'Cash', date:'2026-08-15'},
+    {category:'Cleaning', description:'Cleaning & sanitation', amount:3000, mode:'Cash', date:'2026-08-16'},
+    {category:'Other', description:'Miscellaneous supplies', amount:5000, mode:'UPI', date:'2026-08-13'},
+  ];
+  return items.map((it,i)=>Object.assign({id:'e'+i, note:'', seq:1000+i}, it));
+}
+const CATEGORIES=['Pooja','Decoration','Food','Sound','Lighting','Flowers','Cleaning','Other'];
+
+class Component extends DCLogic {
+  state = (()=>{
+    const flats = buildFlats();
+    return {
+      isMobile: typeof window!=='undefined' && window.innerWidth<900,
+      screen:'dashboard',
+      year:'2026',
+      flats,
+      donations: seedDonations(flats),
+      expenses: seedExpenses(),
+      seqCounter: 2000,
+      donationModalOpen:false,
+      expenseModalOpen:false,
+      toast:null,
+      flatsFilter:'all',
+      flatsSearch:'',
+      txnFilter:'all',
+      donationForm:{flatId:'', name:'', amount:'', mode:'UPI', date:'2026-08-17', note:''},
+      expenseForm:{category:'Pooja', description:'', amount:'', mode:'Cash', date:'2026-08-17', note:'', billAttached:false},
+    };
+  })();
+
+  componentDidMount(){
+    this._onResize = ()=> this.setState({isMobile: window.innerWidth<900});
+    window.addEventListener('resize', this._onResize);
+  }
+  componentWillUnmount(){
+    window.removeEventListener('resize', this._onResize);
+    clearTimeout(this._toastTimer);
+  }
+
+  setScreen = (s) => this.setState({screen:s});
+  setYear = (e) => this.setState({year:e.target.value});
+
+  showToast = (msg) => {
+    this.setState({toast:msg});
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(()=>this.setState({toast:null}), 2600);
+  };
+  settingsClick = () => this.showToast('Settings coming soon');
+
+  openDonationModal = (flatId) => {
+    const f = flatId ? this.state.flats.find(x=>x.id===flatId) : null;
+    this.setState({donationModalOpen:true, donationForm:{flatId:flatId||'', name: f? f.owner:'', amount:'', mode:'UPI', date:'2026-08-17', note:''}});
+  };
+  closeDonationModal = () => this.setState({donationModalOpen:false});
+  setDonationField = (field,value) => {
+    this.setState(s=>{
+      const form={...s.donationForm,[field]:value};
+      if(field==='flatId'){
+        const f=s.flats.find(x=>x.id===value);
+        if(f) form.name=f.owner;
+      }
+      return {donationForm:form};
+    });
+  };
+  submitDonation = () => {
+    const f=this.state.donationForm;
+    if(!f.flatId || !f.amount || Number(f.amount)<=0) return;
+    const seq=this.state.seqCounter+1;
+    const entry={id:'d_'+seq, flatId:f.flatId, name:f.name||'Resident', amount:Number(f.amount), mode:f.mode, date:f.date, note:f.note, seq};
+    this.setState(s=>({donations:[...s.donations, entry], seqCounter:seq, donationModalOpen:false}));
+    this.showToast('Donation added successfully ✓');
+  };
+
+  openExpenseModal = () => this.setState({expenseModalOpen:true, expenseForm:{category:'Pooja', description:'', amount:'', mode:'Cash', date:'2026-08-17', note:'', billAttached:false}});
+  closeExpenseModal = () => this.setState({expenseModalOpen:false});
+  setExpenseField = (field,value) => this.setState(s=>({expenseForm:{...s.expenseForm,[field]:value}}));
+  toggleBillAttached = () => this.setState(s=>({expenseForm:{...s.expenseForm, billAttached: !s.expenseForm.billAttached}}));
+  submitExpense = () => {
+    const f=this.state.expenseForm;
+    if(!f.description || !f.amount || Number(f.amount)<=0) return;
+    const seq=this.state.seqCounter+1;
+    const entry={id:'e_'+seq, category:f.category, description:f.description, amount:Number(f.amount), mode:f.mode, date:f.date, note:f.note, seq};
+    this.setState(s=>({expenses:[...s.expenses, entry], seqCounter:seq, expenseModalOpen:false}));
+    this.showToast('Expense added successfully ✓');
+  };
+
+  setFlatsFilter = (v) => this.setState({flatsFilter:v});
+  setFlatsSearch = (e) => this.setState({flatsSearch:e.target.value});
+  setTxnFilter = (v) => this.setState({txnFilter:v});
+  viewFlatsFromDashboard = () => this.setState({screen:'flats', flatsFilter:'all'});
+
+  renderVals(){
+    const {flats, donations, expenses, flatsFilter, flatsSearch, txnFilter, year, screen, isMobile} = this.state;
+
+    const totalCollected = donations.reduce((s,d)=>s+d.amount,0);
+    const totalExpenses = expenses.reduce((s,e)=>s+e.amount,0);
+    const balance = totalCollected-totalExpenses;
+    const contributedIds = new Set(donations.map(d=>d.flatId));
+    const contributedCount = contributedIds.size;
+    const totalFlats = flats.length;
+    const notContributedCount = totalFlats-contributedCount;
+    const contributedPct = Math.round(contributedCount/totalFlats*100);
+    const incomeExpenseMax = Math.max(totalCollected, totalExpenses, 1);
+
+    const donationTx = donations.map(d=>{
+      const f=flats.find(x=>x.id===d.flatId);
+      return {
+        id:d.id, type:'in', typeLabel:'Money In',
+        title:(f?f.label:d.flatId)+' • '+d.name,
+        subtitle:'Donation • '+d.mode, mode:d.mode,
+        amount:d.amount, amountFmt:fmtINR(d.amount), amountSigned:'+'+fmtINR(d.amount), amountColor:'#16A34A',
+        date:d.date, dateFmt:fmtDate(d.date), seq:d.seq,
+      };
+    });
+    const expenseTx = expenses.map(e=>({
+      id:e.id, type:'out', typeLabel:'Money Out',
+      title:e.category, description:e.description,
+      subtitle:e.description+' • '+e.mode, mode:e.mode,
+      amount:e.amount, amountFmt:fmtINR(e.amount), amountSigned:'-'+fmtINR(e.amount), amountColor:'#DC2626',
+      date:e.date, dateFmt:fmtDate(e.date), seq:e.seq,
+    }));
+    const transactions = donationTx.concat(expenseTx).sort((a,b)=>b.seq-a.seq);
+    const recentTransactions = transactions.slice(0,5);
+
+    let filteredTransactions = transactions;
+    if(txnFilter==='in') filteredTransactions = transactions.filter(t=>t.type==='in');
+    if(txnFilter==='out') filteredTransactions = transactions.filter(t=>t.type==='out');
+
+    const donationsSorted = [...donationTx].sort((a,b)=>b.seq-a.seq);
+    const expensesSorted = [...expenseTx].sort((a,b)=>b.seq-a.seq);
+
+    const catTotals = {};
+    expenses.forEach(e=>{ catTotals[e.category] = (catTotals[e.category]||0) + e.amount; });
+    const catMax = Math.max(...Object.values(catTotals), 1);
+    const categoryBreakdown = Object.keys(catTotals).sort((a,b)=>catTotals[b]-catTotals[a]).map(cat=>({
+      category:cat, amount:catTotals[cat], amountFmt:fmtINR(catTotals[cat]), pct: Math.round(catTotals[cat]/catMax*100),
+    }));
+
+    let flatsWithData = flats.map(f=>{
+      const d = donations.filter(x=>x.flatId===f.id);
+      const contribution = d.reduce((s,x)=>s+x.amount,0);
+      const contributed = contribution>0;
+      return {...f, contribution, contributionFmt:fmtINR(contribution), contributed,
+        statusColor: contributed?'#16A34A':'#DC2626', statusText: contributed?'Contributed':'Not Contributed'};
+    });
+    let filteredFlats = flatsWithData;
+    if(flatsFilter==='contributed') filteredFlats = filteredFlats.filter(f=>f.contributed);
+    if(flatsFilter==='not') filteredFlats = filteredFlats.filter(f=>!f.contributed);
+    if(flatsSearch.trim()){
+      const q=flatsSearch.trim().toLowerCase();
+      filteredFlats = filteredFlats.filter(f=> f.label.toLowerCase().includes(q) || f.owner.toLowerCase().includes(q) || (f.tenant!=='-'&&f.tenant.toLowerCase().includes(q)));
+    }
+
+    const navBase = {display:'flex',alignItems:'center',gap:10,padding:'11px 14px',borderRadius:12,cursor:'pointer',fontSize:14,fontWeight:600,border:'none',width:'100%',textAlign:'left'};
+    const navStyles = {};
+    const bottomNavStyles = {};
+    ['dashboard','flats','donations','expenses','transactions'].forEach(n=>{
+      const active = screen===n;
+      navStyles[n] = {...navBase, background: active?'#FFF7ED':'transparent', color: active?'#EA580C':'#64748B'};
+      bottomNavStyles[n] = {display:'flex',flexDirection:'column',alignItems:'center',gap:2,padding:'6px 4px',border:'none',background:'none',cursor:'pointer',color:active?'#EA580C':'#94A3B8',fontSize:10,fontWeight:600,flex:1};
+    });
+
+    const segStyle = (active)=>({padding:'8px 16px',borderRadius:9,fontSize:13,fontWeight:700,cursor:'pointer',border:'none',background:active?'#fff':'transparent',color:active?'#1E293B':'#64748B',boxShadow:active?'0 1px 2px rgba(0,0,0,.08)':'none'});
+    const modeStyle = (active)=>({flex:1,textAlign:'center',padding:'10px 12px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer',border: active?'1px solid #F97316':'1px solid #E2E8F0',background: active?'#FFF7ED':'#fff',color: active?'#EA580C':'#475569'});
+
+    return {
+      isMobile, isDesktop: !isMobile,
+      contentPadStyle: 'padding:'+(isMobile?'80px 16px 96px 16px':'28px 32px 28px 32px'),
+      screen, screenIsDashboard: screen==='dashboard', screenIsFlats: screen==='flats',
+      screenIsDonations: screen==='donations', screenIsExpenses: screen==='expenses', screenIsTransactions: screen==='transactions',
+      goDashboard: this.setScreen.bind(this,'dashboard'), goFlats: this.setScreen.bind(this,'flats'),
+      goDonationsNav: this.setScreen.bind(this,'donations'), goExpensesNav: this.setScreen.bind(this,'expenses'),
+      goTransactionsNav: this.setScreen.bind(this,'transactions'),
+      navStyles, bottomNavStyles, settingsClick: this.settingsClick,
+
+      year, setYear:this.setYear, yearHasData: year==='2026', yearNoData: year!=='2026',
+      totalCollectedFmt: fmtINR(totalCollected), totalExpensesFmt: fmtINR(totalExpenses), balanceFmt: fmtINR(balance),
+      contributedCount, notContributedCount, totalFlats, contributedPct,
+      contributedRatio: contributedCount+' / '+totalFlats,
+      incomePct: Math.round(totalCollected/incomeExpenseMax*100), expensePct: Math.round(totalExpenses/incomeExpenseMax*100),
+      recentTransactions,
+      viewFlatsFromDashboard: this.viewFlatsFromDashboard,
+      addDonationClick: ()=>this.openDonationModal(null), openExpenseModal: this.openExpenseModal,
+
+      flatsFilter, setFlatsSearch:this.setFlatsSearch, flatsSearch,
+      filterAll: ()=>this.setFlatsFilter('all'), filterContributed: ()=>this.setFlatsFilter('contributed'), filterNot: ()=>this.setFlatsFilter('not'),
+      filterAllStyle: segStyle(flatsFilter==='all'), filterContributedStyle: segStyle(flatsFilter==='contributed'), filterNotStyle: segStyle(flatsFilter==='not'),
+      filteredFlats,
+
+      donationsSorted, expensesSorted, categoryBreakdown,
+
+      txnFilter, filteredTransactions,
+      txnFilterAllClick: ()=>this.setTxnFilter('all'), txnFilterInClick: ()=>this.setTxnFilter('in'), txnFilterOutClick: ()=>this.setTxnFilter('out'),
+      txnFilterAllStyle: segStyle(txnFilter==='all'), txnFilterInStyle: segStyle(txnFilter==='in'), txnFilterOutStyle: segStyle(txnFilter==='out'),
+
+      donationModalOpen: this.state.donationModalOpen, closeDonationModal:this.closeDonationModal,
+      donationForm: this.state.donationForm, submitDonation:this.submitDonation,
+      flatOptions: flats,
+      handleFlatSelect: (e)=>this.setDonationField('flatId', e.target.value),
+      handleNameChange: (e)=>this.setDonationField('name', e.target.value),
+      handleAmountChange: (e)=>this.setDonationField('amount', e.target.value),
+      handleDateChange: (e)=>this.setDonationField('date', e.target.value),
+      handleNoteChange: (e)=>this.setDonationField('note', e.target.value),
+      pickCashDon: ()=>this.setDonationField('mode','Cash'), pickUpiDon: ()=>this.setDonationField('mode','UPI'), pickBankDon: ()=>this.setDonationField('mode','Bank'),
+      donModeCashStyle: modeStyle(this.state.donationForm.mode==='Cash'), donModeUpiStyle: modeStyle(this.state.donationForm.mode==='UPI'), donModeBankStyle: modeStyle(this.state.donationForm.mode==='Bank'),
+
+      expenseModalOpen: this.state.expenseModalOpen, closeExpenseModal:this.closeExpenseModal,
+      expenseForm: this.state.expenseForm, submitExpense:this.submitExpense,
+      handleDescChange: (e)=>this.setExpenseField('description', e.target.value),
+      handleExpAmountChange: (e)=>this.setExpenseField('amount', e.target.value),
+      handleExpDateChange: (e)=>this.setExpenseField('date', e.target.value),
+      handleExpNoteChange: (e)=>this.setExpenseField('note', e.target.value),
+      pickCashExp: ()=>this.setExpenseField('mode','Cash'), pickUpiExp: ()=>this.setExpenseField('mode','UPI'), pickBankExp: ()=>this.setExpenseField('mode','Bank'),
+      expModeCashStyle: modeStyle(this.state.expenseForm.mode==='Cash'), expModeUpiStyle: modeStyle(this.state.expenseForm.mode==='UPI'), expModeBankStyle: modeStyle(this.state.expenseForm.mode==='Bank'),
+      toggleBillAttached: this.toggleBillAttached,
+      billLabel: this.state.expenseForm.billAttached ? 'Bill attached ✓' : '+ Upload Bill (optional)',
+      categories: CATEGORIES,
+      handleCategoryChange: (e)=>this.setExpenseField('category', e.target.value),
+
+      toast: this.state.toast,
+    };
+  }
+}
+</script>
+</body>
+</html>

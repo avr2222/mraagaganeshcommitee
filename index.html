@@ -2,284 +2,783 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>Ganesh Pooja Expense Portal</title>
+<meta name="description" content="Track donations, expenses, flats, and prasadam seva sign-ups for the Ganesh Pooja committee.">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#F97316">
+<link rel="icon" href="icons/favicon-48.png" sizes="48x48" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ganesh Pooja">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
-<header class="app-header">
-  <div class="header-inner">
-    <div class="brand">
-      <span class="brand-icon">🕉️</span>
+<!-- Initial load spinner -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+</div>
+
+<!-- Offline indicator -->
+<div class="offline-banner hidden" id="offlineBanner">⚠ You're offline — changes and live data won't load until you're back online</div>
+
+<!-- Auth screen (login / sign up) -->
+<div class="auth-screen" id="authScreen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="brand-icon">
+        <svg width="22" height="22" viewBox="0 0 100 130" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"><path d="M50 3 C48.5 3, 47.5 4.3, 48 5.8 C48.4 7, 51.6 7, 52 5.8 C52.5 4.3, 51.5 3, 50 3 Z" fill="currentColor" stroke="none"/><ellipse cx="50" cy="11" rx="4.2" ry="2.4"/><ellipse cx="50" cy="16.5" rx="6.8" ry="2.6"/><ellipse cx="50" cy="22" rx="9.4" ry="2.8"/><path d="M32 29 C17 24, 2 32, 2 47 C2 60, 14 67, 27 62 C21 57, 17 50, 19 43 C21 35, 26 31, 32 29 Z"/><path d="M68 29 C83 24, 98 32, 98 47 C98 60, 86 67, 73 62 C79 57, 83 50, 81 43 C79 35, 74 31, 68 29 Z"/><path d="M50 26 C39 26, 32 34, 32 46 C32 54, 36 59, 41 62 L39 67 C42.5 66, 47 65, 50 65 C53 65, 57.5 66, 61 67 L59 62 C64 59, 68 54, 68 46 C68 34, 61 26, 50 26 Z"/><path d="M46 64 C40 73, 32 80, 31 91 C30 100, 38 105, 44 100 C48 97, 46 92, 42 93 C39 94, 39 98, 42 99"/><circle cx="36" cy="112" r="4.4" fill="currentColor" stroke="none"/></svg>
+      </div>
       <div>
-        <h1 id="eventTitle">Ganesh Pooja Expense Portal</h1>
-        <p id="eventSubtitle" class="subtitle">Community contributions &amp; expense tracker</p>
-      </div>
-    </div>
-    <button id="settingsBtn" class="icon-btn" title="Event Settings">⚙️ Settings</button>
-  </div>
-</header>
-
-<nav class="tabs">
-  <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
-  <button class="tab-btn" data-tab="contributions">Contributions</button>
-  <button class="tab-btn" data-tab="expenses">Expenses</button>
-  <button class="tab-btn" data-tab="reports">Reports</button>
-</nav>
-
-<main class="container">
-
-  <!-- DASHBOARD -->
-  <section id="dashboard" class="tab-panel active">
-    <div class="cards">
-      <div class="card card-collection">
-        <span class="card-label">Total Collections</span>
-        <span class="card-value" id="totalCollections">₹0</span>
-      </div>
-      <div class="card card-expense">
-        <span class="card-label">Total Expenses</span>
-        <span class="card-value" id="totalExpenses">₹0</span>
-      </div>
-      <div class="card card-balance">
-        <span class="card-label">Balance in Hand</span>
-        <span class="card-value" id="balanceAmount">₹0</span>
-      </div>
-      <div class="card card-count">
-        <span class="card-label">Contributors</span>
-        <span class="card-value" id="contributorCount">0</span>
+        <div class="brand-title">Ganesh Pooja</div>
+        <div class="brand-sub">Expense Portal</div>
       </div>
     </div>
 
-    <div class="dashboard-grid">
-      <div class="panel">
-        <h2>Expenses by Category</h2>
-        <div id="categoryBreakdown" class="breakdown-list"></div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="authTabSignIn" data-mode="signin">Sign In</button>
+      <button class="auth-tab" id="authTabSignUp" data-mode="signup">Sign Up</button>
+    </div>
+
+    <div class="auth-body">
+      <div class="field" id="authNameField" hidden>
+        <label>FULL NAME</label>
+        <input type="text" id="authName" placeholder="Your name" autocomplete="name">
       </div>
-      <div class="panel">
-        <h2>Recent Activity</h2>
-        <div id="recentActivity" class="activity-list"></div>
+      <div class="field">
+        <label>EMAIL</label>
+        <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email">
       </div>
-    </div>
-  </section>
-
-  <!-- CONTRIBUTIONS -->
-  <section id="contributions" class="tab-panel">
-    <div class="panel form-panel">
-      <h2 id="contribFormTitle">Add Contribution</h2>
-      <form id="contributionForm" class="entry-form">
-        <input type="hidden" id="contribId">
-        <div class="form-row">
-          <div class="form-group">
-            <label for="contribName">Donor Name *</label>
-            <input type="text" id="contribName" required placeholder="e.g. Rao Family">
-          </div>
-          <div class="form-group">
-            <label for="contribPhone">Phone</label>
-            <input type="tel" id="contribPhone" placeholder="Optional">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="contribAmount">Amount (₹) *</label>
-            <input type="number" id="contribAmount" min="0" step="1" required placeholder="0">
-          </div>
-          <div class="form-group">
-            <label for="contribDate">Date *</label>
-            <input type="date" id="contribDate" required>
-          </div>
-          <div class="form-group">
-            <label for="contribMode">Payment Mode</label>
-            <select id="contribMode">
-              <option value="Cash">Cash</option>
-              <option value="UPI">UPI</option>
-              <option value="Bank Transfer">Bank Transfer</option>
-              <option value="Cheque">Cheque</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label for="contribNotes">Notes</label>
-          <input type="text" id="contribNotes" placeholder="Optional">
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary" id="contribSubmitBtn">Add Contribution</button>
-          <button type="button" class="btn btn-secondary hidden" id="contribCancelBtn">Cancel</button>
-        </div>
-      </form>
-    </div>
-
-    <div class="panel">
-      <div class="panel-header-row">
-        <h2>All Contributions</h2>
-        <input type="search" id="contribSearch" class="search-input" placeholder="Search by name...">
+      <div class="field">
+        <label>PASSWORD</label>
+        <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password">
       </div>
-      <div class="table-wrap">
-        <table class="data-table" id="contributionsTable">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Donor</th>
-              <th>Phone</th>
-              <th>Mode</th>
-              <th>Notes</th>
-              <th class="num">Amount</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <p class="empty-state hidden" id="contributionsEmpty">No contributions recorded yet. Add the first one above.</p>
-    </div>
-  </section>
-
-  <!-- EXPENSES -->
-  <section id="expenses" class="tab-panel">
-    <div class="panel form-panel">
-      <h2 id="expenseFormTitle">Add Expense</h2>
-      <form id="expenseForm" class="entry-form">
-        <input type="hidden" id="expenseId">
-        <div class="form-row">
-          <div class="form-group">
-            <label for="expenseDesc">Description *</label>
-            <input type="text" id="expenseDesc" required placeholder="e.g. Idol purchase">
-          </div>
-          <div class="form-group">
-            <label for="expenseCategory">Category *</label>
-            <select id="expenseCategory" required>
-              <option value="Idol &amp; Decoration">Idol &amp; Decoration</option>
-              <option value="Pandal Setup">Pandal Setup</option>
-              <option value="Pooja Samagri">Pooja Samagri</option>
-              <option value="Priest / Purohit">Priest / Purohit</option>
-              <option value="Prasad &amp; Food">Prasad &amp; Food</option>
-              <option value="Sound &amp; Lighting">Sound &amp; Lighting</option>
-              <option value="Cultural Events">Cultural Events</option>
-              <option value="Visarjan / Immersion">Visarjan / Immersion</option>
-              <option value="Printing &amp; Invitations">Printing &amp; Invitations</option>
-              <option value="Permissions &amp; Security">Permissions &amp; Security</option>
-              <option value="Miscellaneous">Miscellaneous</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="expenseAmount">Amount (₹) *</label>
-            <input type="number" id="expenseAmount" min="0" step="1" required placeholder="0">
-          </div>
-          <div class="form-group">
-            <label for="expenseDate">Date *</label>
-            <input type="date" id="expenseDate" required>
-          </div>
-          <div class="form-group">
-            <label for="expenseVendor">Paid To / Vendor</label>
-            <input type="text" id="expenseVendor" placeholder="Optional">
-          </div>
-        </div>
-        <div class="form-group">
-          <label for="expenseNotes">Notes</label>
-          <input type="text" id="expenseNotes" placeholder="Optional">
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary" id="expenseSubmitBtn">Add Expense</button>
-          <button type="button" class="btn btn-secondary hidden" id="expenseCancelBtn">Cancel</button>
-        </div>
-      </form>
-    </div>
-
-    <div class="panel">
-      <div class="panel-header-row">
-        <h2>All Expenses</h2>
-        <input type="search" id="expenseSearch" class="search-input" placeholder="Search by description...">
-      </div>
-      <div class="table-wrap">
-        <table class="data-table" id="expensesTable">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Description</th>
-              <th>Category</th>
-              <th>Vendor</th>
-              <th>Notes</th>
-              <th class="num">Amount</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <p class="empty-state hidden" id="expensesEmpty">No expenses recorded yet. Add the first one above.</p>
-    </div>
-  </section>
-
-  <!-- REPORTS -->
-  <section id="reports" class="tab-panel">
-    <div class="panel">
-      <h2>Export &amp; Print</h2>
-      <p class="hint">Download your data as CSV for record keeping, or print a summary report for the committee.</p>
-      <div class="report-actions">
-        <button class="btn btn-primary" id="exportContribCsv">⬇️ Export Contributions CSV</button>
-        <button class="btn btn-primary" id="exportExpenseCsv">⬇️ Export Expenses CSV</button>
-        <button class="btn btn-secondary" id="printReport">🖨️ Print Summary Report</button>
-      </div>
-    </div>
-
-    <div class="panel">
-      <h2>Backup &amp; Restore</h2>
-      <p class="hint">All data is stored locally in this browser. Export a backup regularly, especially before clearing browser data.</p>
-      <div class="report-actions">
-        <button class="btn btn-secondary" id="exportBackup">⬇️ Download Full Backup (JSON)</button>
-        <label class="btn btn-secondary file-btn">
-          ⬆️ Restore from Backup
-          <input type="file" id="importBackup" accept="application/json" hidden>
-        </label>
-      </div>
-    </div>
-
-    <div class="panel danger-panel">
-      <h2>Danger Zone</h2>
-      <p class="hint">This permanently clears all contributions and expenses in this browser.</p>
-      <button class="btn btn-danger" id="clearAllBtn">🗑️ Clear All Data</button>
-    </div>
-  </section>
-
-</main>
-
-<!-- Printable summary (only visible when printing) -->
-<div id="printArea" class="print-only">
-  <h1 id="printTitle"></h1>
-  <p id="printSubtitle"></p>
-  <table>
-    <tr><td>Total Collections</td><td id="printTotalCollections"></td></tr>
-    <tr><td>Total Expenses</td><td id="printTotalExpenses"></td></tr>
-    <tr><td>Balance in Hand</td><td id="printBalance"></td></tr>
-  </table>
-  <h2>Expenses by Category</h2>
-  <table id="printCategoryTable"></table>
-  <p class="print-footer">Generated on <span id="printDate"></span></p>
-</div>
-
-<!-- Settings Modal -->
-<div id="settingsModal" class="modal-overlay hidden">
-  <div class="modal">
-    <h2>Event Settings</h2>
-    <div class="form-group">
-      <label for="settingsEventName">Event / Committee Name</label>
-      <input type="text" id="settingsEventName" placeholder="e.g. Ganesh Pooja Committee 2026">
-    </div>
-    <div class="form-group">
-      <label for="settingsSubtitle">Subtitle</label>
-      <input type="text" id="settingsSubtitle" placeholder="e.g. Community contributions & expense tracker">
-    </div>
-    <div class="form-actions">
-      <button class="btn btn-primary" id="settingsSaveBtn">Save</button>
-      <button class="btn btn-secondary" id="settingsCancelBtn">Cancel</button>
+      <div class="auth-error hidden" id="authError"></div>
+      <button class="btn btn-orange" id="authSubmitBtn" style="width:100%">Sign In</button>
+      <div class="auth-hint" id="authHint">New committee members sign up and start as a <strong>Viewer</strong> — a Super Admin can promote you from Settings → Users.</div>
     </div>
   </div>
 </div>
 
-<div id="toast" class="toast hidden"></div>
+<div class="app hidden" id="appRoot">
+
+  <!-- Desktop sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="20" height="20" viewBox="0 0 100 130" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"><path d="M50 3 C48.5 3, 47.5 4.3, 48 5.8 C48.4 7, 51.6 7, 52 5.8 C52.5 4.3, 51.5 3, 50 3 Z" fill="currentColor" stroke="none"/><ellipse cx="50" cy="11" rx="4.2" ry="2.4"/><ellipse cx="50" cy="16.5" rx="6.8" ry="2.6"/><ellipse cx="50" cy="22" rx="9.4" ry="2.8"/><path d="M32 29 C17 24, 2 32, 2 47 C2 60, 14 67, 27 62 C21 57, 17 50, 19 43 C21 35, 26 31, 32 29 Z"/><path d="M68 29 C83 24, 98 32, 98 47 C98 60, 86 67, 73 62 C79 57, 83 50, 81 43 C79 35, 74 31, 68 29 Z"/><path d="M50 26 C39 26, 32 34, 32 46 C32 54, 36 59, 41 62 L39 67 C42.5 66, 47 65, 50 65 C53 65, 57.5 66, 61 67 L59 62 C64 59, 68 54, 68 46 C68 34, 61 26, 50 26 Z"/><path d="M46 64 C40 73, 32 80, 31 91 C30 100, 38 105, 44 100 C48 97, 46 92, 42 93 C39 94, 39 98, 42 99"/><circle cx="36" cy="112" r="4.4" fill="currentColor" stroke="none"/></svg>
+      </div>
+      <div>
+        <div class="brand-title">Ganesh Pooja</div>
+        <div class="brand-sub">Expense Portal</div>
+      </div>
+    </div>
+    <nav class="nav" id="sidebarNav">
+      <button class="nav-btn" data-screen="dashboard">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V9.5"/></svg>
+        <span>Dashboard</span>
+      </button>
+      <button class="nav-btn" data-screen="flats">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 8h1M14 8h1M9 12h1M14 12h1M9 16h2"/></svg>
+        <span>Flats</span>
+      </button>
+      <button class="nav-btn" data-screen="donations">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><text x="12" y="16" text-anchor="middle" font-size="10" font-weight="700" stroke="none" fill="currentColor">₹</text></svg>
+        <span>Donations</span>
+      </button>
+      <button class="nav-btn" data-screen="expenses">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path d="M9 8h6M9 12h6"/></svg>
+        <span>Expenses</span>
+      </button>
+      <button class="nav-btn" data-screen="transactions">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4L4 7h3zM7 4v13M17 20l3-3h-3zM17 20V7"/></svg>
+        <span>Transactions</span>
+      </button>
+      <button class="nav-btn" data-screen="prasadam">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12c0-1 1-2 2-2h12c1 0 2 1 2 2v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6z"/><path d="M9 10V7a3 3 0 016 0v3"/><path d="M8 16h.01M12 16h.01M16 16h.01"/></svg>
+        <span>Prasadam Seva</span>
+      </button>
+    </nav>
+    <div class="sidebar-user" id="sidebarUser">
+      <div class="user-avatar" id="userAvatar">?</div>
+      <div class="user-info">
+        <div class="user-email" id="userEmailLabel">—</div>
+        <div class="user-role" id="userRoleLabel">—</div>
+      </div>
+    </div>
+    <button class="settings-btn" id="settingsBtn">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09a1.7 1.7 0 001.55-1 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34H9a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.55 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87V9a1.7 1.7 0 001.55 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
+      Settings
+    </button>
+    <button class="settings-btn" id="logoutBtn">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+      Log Out
+    </button>
+  </aside>
+
+  <!-- Mobile top bar -->
+  <header class="topbar">
+    <div class="brand-icon small">
+      <svg width="17" height="17" viewBox="0 0 100 130" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"><path d="M50 3 C48.5 3, 47.5 4.3, 48 5.8 C48.4 7, 51.6 7, 52 5.8 C52.5 4.3, 51.5 3, 50 3 Z" fill="currentColor" stroke="none"/><ellipse cx="50" cy="11" rx="4.2" ry="2.4"/><ellipse cx="50" cy="16.5" rx="6.8" ry="2.6"/><ellipse cx="50" cy="22" rx="9.4" ry="2.8"/><path d="M32 29 C17 24, 2 32, 2 47 C2 60, 14 67, 27 62 C21 57, 17 50, 19 43 C21 35, 26 31, 32 29 Z"/><path d="M68 29 C83 24, 98 32, 98 47 C98 60, 86 67, 73 62 C79 57, 83 50, 81 43 C79 35, 74 31, 68 29 Z"/><path d="M50 26 C39 26, 32 34, 32 46 C32 54, 36 59, 41 62 L39 67 C42.5 66, 47 65, 50 65 C53 65, 57.5 66, 61 67 L59 62 C64 59, 68 54, 68 46 C68 34, 61 26, 50 26 Z"/><path d="M46 64 C40 73, 32 80, 31 91 C30 100, 38 105, 44 100 C48 97, 46 92, 42 93 C39 94, 39 98, 42 99"/><circle cx="36" cy="112" r="4.4" fill="currentColor" stroke="none"/></svg>
+    </div>
+    <div class="topbar-title" id="topbarTitle">Ganesh Pooja Portal</div>
+    <button class="topbar-settings" id="settingsBtnMobile" title="Settings" aria-label="Settings">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09a1.7 1.7 0 001.55-1 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34H9a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.55 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87V9a1.7 1.7 0 001.55 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
+    </button>
+    <button class="topbar-settings" id="logoutBtnMobile" title="Log out" aria-label="Log out">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+    </button>
+  </header>
+
+  <!-- Main content -->
+  <main class="content">
+
+    <!-- DASHBOARD -->
+    <section class="screen" id="screen-dashboard">
+      <div class="screen-head">
+        <div>
+          <div class="eyebrow">GANESH POOJA COMMITTEE</div>
+          <div class="title-row">
+            <h1 id="dashTitle">Ganesh Pooja</h1>
+            <select id="yearSelect"></select>
+          </div>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-orange" id="addDonationBtnDash">+ Add Donation</button>
+          <button class="btn btn-red" id="addExpenseBtnDash">+ Add Expense</button>
+        </div>
+      </div>
+
+      <div id="dashHasData">
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Collected</div>
+            <div class="stat-value green" id="statCollected">₹0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Total Expenses</div>
+            <div class="stat-value red" id="statExpenses">₹0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Current Balance</div>
+            <div class="stat-value blue" id="statBalance">₹0</div>
+            <div class="hint hidden" id="statBalanceHint" style="margin-top:2px"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Flats Contributed</div>
+            <div class="stat-value orange" id="statFlats">0 / 0</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-row">
+            <div class="panel-title" id="flatsProgressTitle">0 / 0 Flats Contributed</div>
+            <button class="btn btn-ghost" id="viewFlatsBtn">View Flats</button>
+          </div>
+          <div class="bar-track"><div class="bar-fill green" id="flatsProgressBar" style="width:0%"></div></div>
+          <div class="legend-row">
+            <div class="legend-item"><span class="dot green"></span><span id="legendContributed">0 Contributed</span></div>
+            <div class="legend-item"><span class="dot slate"></span><span id="legendNotContributed">0 Not Contributed</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title" style="margin-bottom:16px">Income vs Expenses</div>
+          <div class="stack-bars">
+            <div>
+              <div class="stack-row"><span>Income</span><span class="green" id="incomeAmt">₹0</span></div>
+              <div class="bar-track thick"><div class="bar-fill green" id="incomeBar" style="width:0%"></div></div>
+            </div>
+            <div>
+              <div class="stack-row"><span>Expenses</span><span class="red" id="expenseAmt">₹0</span></div>
+              <div class="bar-track thick"><div class="bar-fill red" id="expenseBar" style="width:0%"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel hidden" id="yearComparePanel">
+          <div class="panel-title" style="margin-bottom:16px" id="yearCompareTitle">This Year vs Last Year</div>
+          <div class="compare-grid" id="yearCompareGrid"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-row">
+            <div class="panel-title">Category Budgets</div>
+            <button class="btn btn-ghost" id="manageBudgetBtn" hidden>Manage Budgets</button>
+          </div>
+          <div id="budgetOverview">
+            <div class="budget-overview-grid">
+              <div class="budget-donut-wrap" id="budgetDonutWrap"></div>
+              <div class="budget-legend" id="budgetLegend"></div>
+            </div>
+            <div class="budget-list" id="budgetList"></div>
+          </div>
+          <p class="empty-sub hidden" id="budgetEmpty">No budgets set for <span id="budgetEmptyYear"></span> yet. Click "Manage Budgets" to plan how much each category should cost.</p>
+        </div>
+
+        <div class="panel">
+          <div class="panel-row">
+            <div class="panel-title">Who Has How Much (Cash in Hand)</div>
+            <button class="btn btn-ghost" id="recordTransferBtn" hidden>+ Record Transfer</button>
+          </div>
+          <div id="custodyBreakdown" class="stack-bars"></div>
+          <div id="recentTransfersWrap" style="margin-top:16px">
+            <div class="panel-title" style="font-size:13px;margin-bottom:8px">Recent Transfers</div>
+            <div id="recentTransfersList" class="txn-list"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Recent Transactions</div>
+          <div id="recentTxList" class="txn-list"></div>
+          <button class="link-btn" id="viewAllTxnBtn">View All Transactions →</button>
+        </div>
+      </div>
+
+      <div class="panel empty-panel hidden" id="dashNoData">
+        <div class="empty-title" id="dashNoDataTitle">No data for this year yet</div>
+        <div class="empty-sub">Switch years or add a donation/expense to get started.</div>
+      </div>
+    </section>
+
+    <!-- FLATS -->
+    <section class="screen" id="screen-flats" hidden>
+      <div class="screen-head">
+        <div>
+          <h1>Flats</h1>
+          <div class="subtle" id="flatsCount">0 units</div>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="segmented" id="flatsFilterSeg">
+          <button class="seg-btn" data-filter="all">All</button>
+          <button class="seg-btn" data-filter="contributed">Contributed</button>
+          <button class="seg-btn" data-filter="not">Not Contributed</button>
+        </div>
+        <input type="search" class="search-input" id="flatsSearch" placeholder="Search flat...">
+      </div>
+
+      <div class="cards-list" id="flatsCards"></div>
+
+      <div class="table-panel">
+        <table class="data-table">
+          <thead>
+            <tr><th>FLAT</th><th>OWNER</th><th>TENANT</th><th class="num">CONTRIBUTION</th><th>STATUS</th><th></th></tr>
+          </thead>
+          <tbody id="flatsTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- DONATIONS -->
+    <section class="screen" id="screen-donations" hidden>
+      <div class="screen-head">
+        <div>
+          <h1>Donations</h1>
+          <div class="subtle">Total Collected: <span class="green strong" id="donationsTotalLabel">₹0</span></div>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-ghost" id="exportDonationsCsvBtnList">⬇ CSV</button>
+          <button class="btn btn-ghost" id="exportDonationsBtn">⬇ Export Report</button>
+          <button class="btn btn-orange" id="addDonationBtnList">+ Add Donation</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title" style="margin-bottom:16px">Collected By</div>
+        <div id="collectedByBreakdown" class="stack-bars"></div>
+      </div>
+
+      <div class="cards-list" id="donationsCards"></div>
+
+      <div class="table-panel">
+        <table class="data-table">
+          <thead><tr><th>DONOR</th><th>MODE</th><th>DATE</th><th class="num">AMOUNT</th><th></th></tr></thead>
+          <tbody id="donationsTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- EXPENSES -->
+    <section class="screen" id="screen-expenses" hidden>
+      <div class="screen-head">
+        <div>
+          <h1>Expenses</h1>
+          <div class="subtle">Total Expenses: <span class="red strong" id="expensesTotalLabel">₹0</span></div>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-ghost" id="exportExpensesCsvBtnList">⬇ CSV</button>
+          <button class="btn btn-ghost" id="exportExpensesBtn">⬇ Export Report</button>
+          <button class="btn btn-red" id="addExpenseBtnList">+ Add Expense</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title" style="margin-bottom:16px">Expenses by Category</div>
+        <div id="categoryBreakdown" class="stack-bars"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title" style="margin-bottom:16px">Recorded By</div>
+        <div id="recordedByBreakdown" class="stack-bars"></div>
+      </div>
+
+      <div class="cards-list" id="expensesCards"></div>
+
+      <div class="table-panel">
+        <table class="data-table">
+          <thead><tr><th>CATEGORY</th><th>DESCRIPTION</th><th>MODE</th><th>DATE</th><th class="num">AMOUNT</th><th></th></tr></thead>
+          <tbody id="expensesTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TRANSACTIONS -->
+    <section class="screen" id="screen-transactions" hidden>
+      <div class="screen-head">
+        <h1>Transactions</h1>
+        <div class="head-actions">
+          <button class="btn btn-ghost" id="exportTxnCsvBtn">⬇ CSV</button>
+          <button class="btn btn-ghost" id="exportBothBtn">⬇ Export Combined Report</button>
+        </div>
+      </div>
+      <div class="segmented" id="txnFilterSeg" style="margin-bottom:16px;width:fit-content">
+        <button class="seg-btn" data-filter="all">All</button>
+        <button class="seg-btn" data-filter="in">Money In</button>
+        <button class="seg-btn" data-filter="out">Money Out</button>
+      </div>
+
+      <div class="cards-list" id="txnCards"></div>
+
+      <div class="table-panel">
+        <table class="data-table">
+          <thead><tr><th>TYPE</th><th>DETAILS</th><th>DATE</th><th class="num">AMOUNT</th></tr></thead>
+          <tbody id="txnTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- PRASADAM SEVA -->
+    <section class="screen" id="screen-prasadam" hidden>
+      <div class="screen-head">
+        <div>
+          <h1>Prasadam Seva</h1>
+          <div class="subtle">Sign up to bring morning or evening prasadam on any of the festival days below.</div>
+        </div>
+        <button class="btn btn-orange admin-only" id="addSevaDayBtn">+ Add Day</button>
+      </div>
+
+      <div id="sevaDaysList" class="seva-days-list"></div>
+      <div class="panel empty-panel hidden" id="sevaNoDays">
+        <div class="empty-title">No seva days set up yet</div>
+        <div class="empty-sub" id="sevaNoDaysSub">Ask your Super Admin to add this year's festival days.</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Mobile bottom nav -->
+  <nav class="bottomnav" id="bottomNav">
+    <button class="bn-btn" data-screen="dashboard">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V9.5"/></svg>
+      <span>Dashboard</span>
+    </button>
+    <button class="bn-btn" data-screen="flats">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 8h1M14 8h1M9 12h1M14 12h1M9 16h2"/></svg>
+      <span>Flats</span>
+    </button>
+    <button class="bn-btn" data-screen="donations">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><text x="12" y="16" text-anchor="middle" font-size="10" font-weight="700" stroke="none" fill="currentColor">₹</text></svg>
+      <span>Donations</span>
+    </button>
+    <button class="bn-btn" data-screen="expenses">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path d="M9 8h6M9 12h6"/></svg>
+      <span>Expenses</span>
+    </button>
+    <button class="bn-btn" data-screen="transactions">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 4L4 7h3zM7 4v13M17 20l3-3h-3zM17 20V7"/></svg>
+      <span>Txns</span>
+    </button>
+    <button class="bn-btn" data-screen="prasadam">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12c0-1 1-2 2-2h12c1 0 2 1 2 2v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6z"/><path d="M9 10V7a3 3 0 016 0v3"/><path d="M8 16h.01M12 16h.01M16 16h.01"/></svg>
+      <span>Seva</span>
+    </button>
+  </nav>
+
+  <!-- Donation modal -->
+  <div class="modal-overlay hidden" id="donationModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title">Add Donation</div>
+        <button class="modal-close" id="closeDonationModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>FLAT NUMBER</label>
+          <select id="donFlatSelect">
+            <option value="">Select flat</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>OWNER / TENANT NAME</label>
+          <input type="text" id="donName" placeholder="Name">
+        </div>
+        <div class="field">
+          <label>CONTRIBUTION TYPE</label>
+          <div class="mode-row" id="donKindRow">
+            <button class="mode-btn" data-kind="cash">💵 Cash / UPI / Bank</button>
+            <button class="mode-btn" data-kind="in_kind">🎁 In-Kind (Item)</button>
+          </div>
+        </div>
+        <div class="field" id="donAmountField">
+          <label>AMOUNT</label>
+          <div class="amount-input">
+            <span>₹</span>
+            <input type="number" id="donAmount" placeholder="0" min="0">
+          </div>
+        </div>
+        <div class="field" id="donModeField">
+          <label>PAYMENT MODE</label>
+          <div class="mode-row" id="donModeRow">
+            <button class="mode-btn" data-mode="Cash">Cash</button>
+            <button class="mode-btn" data-mode="UPI">UPI</button>
+            <button class="mode-btn" data-mode="Bank">Bank</button>
+          </div>
+        </div>
+        <div class="field" id="donItemField" hidden>
+          <label>ITEM / WHAT THEY'RE SPONSORING</label>
+          <input type="text" id="donItem" list="donation-items" placeholder="e.g. Ganesh Idol, Laddu Prasad">
+          <datalist id="donation-items">
+            <option value="Ganesh Idol"></option>
+            <option value="Laddu Prasad"></option>
+            <option value="Decoration"></option>
+            <option value="Flowers"></option>
+            <option value="Sound Equipment"></option>
+            <option value="Cultural Program"></option>
+            <option value="Other"></option>
+          </datalist>
+        </div>
+        <div class="field" id="donItemValueField" hidden>
+          <label>ESTIMATED VALUE (OPTIONAL)</label>
+          <div class="amount-input">
+            <span>₹</span>
+            <input type="number" id="donItemValue" placeholder="0 (leave blank if unknown)" min="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>DATE</label>
+          <input type="date" id="donDate">
+        </div>
+        <div class="field">
+          <label>NOTE (OPTIONAL)</label>
+          <textarea id="donNote" rows="2" placeholder="Add a note"></textarea>
+        </div>
+        <div class="field admin-only" id="donCollectedByField" hidden>
+          <label>COLLECTED BY</label>
+          <select id="donCollectedBy"></select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="cancelDonationBtn">Cancel</button>
+        <button class="btn btn-orange" id="saveDonationBtn">Save Donation</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Expense modal -->
+  <div class="modal-overlay hidden" id="expenseModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title">Add Expense</div>
+        <button class="modal-close" id="closeExpenseModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>CATEGORY</label>
+          <input type="text" id="expCategory" list="expense-categories" placeholder="Select or type a category">
+          <datalist id="expense-categories"></datalist>
+        </div>
+        <div class="field">
+          <label>DESCRIPTION</label>
+          <input type="text" id="expDesc" placeholder="What was this for?">
+        </div>
+        <div class="field">
+          <label>AMOUNT</label>
+          <div class="amount-input">
+            <span>₹</span>
+            <input type="number" id="expAmount" placeholder="0" min="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>PAYMENT MODE</label>
+          <div class="mode-row" id="expModeRow">
+            <button class="mode-btn" data-mode="Cash">Cash</button>
+            <button class="mode-btn" data-mode="UPI">UPI</button>
+            <button class="mode-btn" data-mode="Bank">Bank</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>DATE</label>
+          <input type="date" id="expDate">
+        </div>
+        <div class="field">
+          <label>NOTE (OPTIONAL)</label>
+          <textarea id="expNote" rows="2" placeholder="Add a note"></textarea>
+        </div>
+        <div class="field">
+          <label>BILL / RECEIPT PHOTO</label>
+          <label class="bill-btn" for="expBillFile" id="billUploadLabel">📎 Attach bill photo (optional)</label>
+          <input type="file" id="expBillFile" accept="image/*" style="display:none">
+        </div>
+        <div class="field admin-only" id="expRecordedByField" hidden>
+          <label>RECEIVED / PAID BY</label>
+          <select id="expRecordedBy"></select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="cancelExpenseBtn">Cancel</button>
+        <button class="btn btn-red" id="saveExpenseBtn">Save Expense</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit flat modal -->
+  <div class="modal-overlay hidden" id="flatModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title" id="flatModalTitle">Edit Flat</div>
+        <button class="modal-close" id="closeFlatModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>OWNER NAME</label>
+          <input type="text" id="flatOwner" placeholder="Owner name">
+        </div>
+        <div class="field">
+          <label>TENANT NAME (OPTIONAL)</label>
+          <input type="text" id="flatTenant" placeholder="Tenant name, or leave blank">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="cancelFlatBtn">Cancel</button>
+        <button class="btn btn-orange" id="saveFlatBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title">Settings</div>
+        <button class="modal-close" id="closeSettingsModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>YOUR ACCOUNT</label>
+          <div class="account-box">
+            <div id="settingsYouEmail">—</div>
+            <div class="role-badge" id="settingsYouRole">—</div>
+          </div>
+        </div>
+
+        <div class="field hidden" id="installAppField">
+          <label>INSTALL APP</label>
+          <button class="btn btn-ghost" id="installAppBtn" style="width:100%">📲 Install on this device</button>
+          <div class="hint">Adds a Ganesh Pooja icon to your home screen so it opens like a regular app.</div>
+        </div>
+        <div class="field hidden" id="installIosField">
+          <label>INSTALL APP</label>
+          <div class="hint">On iPhone/iPad: tap the Share icon in Safari, then "Add to Home Screen".</div>
+        </div>
+
+        <div class="field admin-only" id="settingsNameField">
+          <label>COMMITTEE NAME</label>
+          <input type="text" id="settingsName" placeholder="e.g. Ganesh Pooja Committee">
+        </div>
+        <div class="field admin-only" id="settingsFlatCountField">
+          <label>NUMBER OF FLATS</label>
+          <input type="number" id="settingsFlatCount" min="1" max="999">
+          <div class="hint">Changing this adds or removes flats from the end of the list, following the G+3 pattern (A001–A018 Ground, A101–A118 1st floor, A201–A218 2nd, A301–A318 3rd).</div>
+        </div>
+
+        <div class="field admin-only" id="settingsUsersField">
+          <label>USERS &amp; ROLES</label>
+          <div id="usersList" class="users-list"></div>
+        </div>
+
+        <div class="field admin-only" id="settingsOpeningBalanceField">
+          <label>OPENING BALANCE FOR <span id="obYearLabel"></span></label>
+          <div class="amount-input">
+            <span>₹</span>
+            <input type="number" id="settingsOpeningBalance" placeholder="0" min="0">
+          </div>
+          <input type="text" id="settingsOpeningBalanceNote" placeholder="Note (optional) — e.g. cash carried over from last year" style="margin-top:8px">
+          <div class="hint">Cash left over from a previous year — added to Total Collected − Total Expenses to get this year's opening Current Balance.</div>
+        </div>
+
+        <div class="field">
+          <label>DATA</label>
+          <div class="settings-actions">
+            <button class="btn btn-ghost" id="exportDonationsCsvBtn">⬇ Donations (CSV)</button>
+            <button class="btn btn-ghost" id="exportExpensesCsvBtn">⬇ Expenses (CSV)</button>
+            <button class="btn btn-ghost" id="exportBackupBtn">⬇ Full Backup (JSON)</button>
+          </div>
+        </div>
+
+        <div class="field hidden" id="settingsActivityField">
+          <label>ACTIVITY LOG</label>
+          <div id="activityLogList" class="activity-log-list"></div>
+        </div>
+
+        <div class="field admin-only" id="settingsDangerField">
+          <label>DANGER ZONE</label>
+          <button class="btn btn-danger-outline" id="clearAllBtn">Clear All Donations &amp; Expenses</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="cancelSettingsBtn">Cancel</button>
+        <button class="btn btn-orange admin-only" id="saveSettingsBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fund transfer modal -->
+  <div class="modal-overlay hidden" id="transferModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title" id="transferModalTitle">Record Transfer</div>
+        <button class="modal-close" id="closeTransferModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>FROM (HANDING OVER)</label>
+          <select id="transferFrom"></select>
+        </div>
+        <div class="field">
+          <label>TO (RECEIVING)</label>
+          <select id="transferTo"></select>
+        </div>
+        <div class="field">
+          <label>AMOUNT</label>
+          <div class="amount-input">
+            <span>₹</span>
+            <input type="number" id="transferAmount" placeholder="0" min="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>DATE</label>
+          <input type="date" id="transferDate">
+        </div>
+        <div class="field">
+          <label>NOTE (OPTIONAL)</label>
+          <textarea id="transferNote" rows="2" placeholder="e.g. Cash handed over after Day 3 collections"></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="cancelTransferBtn">Cancel</button>
+        <button class="btn btn-orange" id="saveTransferBtn">Save Transfer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category budgets modal -->
+  <div class="modal-overlay hidden" id="budgetModal">
+    <div class="modal" style="max-width:520px">
+      <div class="modal-head">
+        <div class="modal-title">Category Budgets — <span id="budgetModalYear"></span></div>
+        <button class="modal-close" id="closeBudgetModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="subtle" style="margin:-4px 0 14px">Set a planned ₹ amount or a % of this year's total collections per category. Leave a row blank to remove its budget.</p>
+        <div id="budgetRows" class="budget-rows"></div>
+        <div class="field" style="margin-top:14px">
+          <label>ADD ANOTHER CATEGORY</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="newBudgetCategory" placeholder="e.g. Tent &amp; Mandap">
+            <button class="btn btn-ghost" id="addBudgetCategoryBtn" type="button">+ Add</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="cancelBudgetBtn">Cancel</button>
+        <button class="btn btn-orange" id="saveBudgetBtn">Save Budgets</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add seva day modal -->
+  <div class="modal-overlay hidden" id="sevaDayModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title">Add Seva Day</div>
+        <button class="modal-close" id="closeSevaDayModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>DATE</label>
+          <input type="date" id="sevaDayDate">
+        </div>
+        <div class="field">
+          <label>LABEL (OPTIONAL)</label>
+          <input type="text" id="sevaDayLabel" placeholder="e.g. Day 1 — Chaturthi">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="cancelSevaDayBtn">Cancel</button>
+        <button class="btn btn-orange" id="saveSevaDayBtn">Add Day</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/edit seva signup modal -->
+  <div class="modal-overlay hidden" id="sevaSignupModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title" id="sevaSignupTitle">Add Your Name</div>
+        <button class="modal-close" id="closeSevaSignupModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <div class="account-box" id="sevaSignupContext">—</div>
+        </div>
+        <div class="field">
+          <label>FLAT NUMBER</label>
+          <select id="sevaFlatSelect">
+            <option value="">Select flat</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>NAME</label>
+          <input type="text" id="sevaName" placeholder="Name">
+        </div>
+        <div class="field">
+          <label>NOTE (OPTIONAL)</label>
+          <textarea id="sevaNote" rows="2" placeholder="e.g. Bringing laddus for 50 people"></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="cancelSevaSignupBtn">Cancel</button>
+        <button class="btn btn-orange" id="saveSevaSignupBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <!-- Printable report (shown only when printing / saving as PDF) -->
+  <div id="printReportArea" class="print-only"></div>
+
+</div>
 
 <script src="js/app.js"></script>
 </body>

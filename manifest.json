@@ -1,0 +1,20 @@
+{
+  "name": "Ganesh Pooja Expense Portal",
+  "short_name": "Ganesh Pooja",
+  "description": "Track donations, expenses, flats, and prasadam seva sign-ups for the Ganesh Pooja committee.",
+  "start_url": "./index.html",
+  "id": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#F8FAFC",
+  "theme_color": "#F97316",
+  "orientation": "portrait-primary",
+  "categories": ["finance", "utilities", "lifestyle"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
