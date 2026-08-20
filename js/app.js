@@ -505,6 +505,18 @@ function computeView(){
     };
   }
 
+  // ---- Prasadam seva: how many morning/evening slots still need a volunteer ----
+  const sevaTotalSlots = store.sevaDays.length * SEVA_SESSIONS.length;
+  let sevaOpenSlots = 0;
+  store.sevaDays.forEach(day=>{
+    SEVA_SESSIONS.forEach(sess=>{
+      const has = store.sevaSignups.some(s=>s.day_id===day.id && s.session===sess.key);
+      if(!has) sevaOpenSlots++;
+    });
+  });
+  const sevaFilledSlots = sevaTotalSlots - sevaOpenSlots;
+  const sevaFilledPct = sevaTotalSlots ? Math.round(sevaFilledSlots/sevaTotalSlots*100) : 0;
+
   return {
     totalCollected, totalExpenses, balance, openingBalance,
     contributedCount, notContributedCount, totalFlats, contributedPct, maxIE,
@@ -512,6 +524,7 @@ function computeView(){
     categoryBreakdown, collectedByBreakdown, recordedByBreakdown,
     budgetBreakdown, budgetDonutSegments, totalBudgetAllocated, overallBudgetPctUsed,
     custodyBreakdown, recentTransfers, yearComparison,
+    sevaTotalSlots, sevaOpenSlots, sevaFilledSlots, sevaFilledPct,
     filteredFlats, hasData: donations.length>0 || expenses.length>0,
   };
 }
@@ -564,6 +577,8 @@ function renderDashboard(v){
   document.getElementById('flatsProgressBar').style.width = v.contributedPct+'%';
   document.getElementById('legendContributed').textContent = v.contributedCount+' Contributed';
   document.getElementById('legendNotContributed').textContent = v.notContributedCount+' Not Contributed';
+
+  renderSevaProgress(v);
 
   document.getElementById('incomeAmt').textContent = fmtINR(v.totalCollected);
   document.getElementById('expenseAmt').textContent = fmtINR(v.totalExpenses);
@@ -871,10 +886,14 @@ function renderPrasadam(){
           ${actions}
         </div>`;
       }).join('') || '<div class="seva-empty">No one signed up yet.</div>';
+      const statusClass = signups.length ? 'filled' : 'empty';
+      const statusTag = signups.length
+        ? `<span class="seva-status-tag filled">SIGNED UP</span>`
+        : `<span class="seva-status-tag empty">OPEN</span>`;
       return `
-        <div class="seva-session">
+        <div class="seva-session ${statusClass}">
           <div class="seva-session-head">
-            <div class="seva-session-title">${sess.icon} ${sess.label}</div>
+            <div class="seva-session-title">${sess.icon} ${sess.label} ${statusTag}</div>
             <span class="subtle" style="font-size:11px">${signups.length} signed up</span>
           </div>
           <div class="seva-signup-list">${rows}</div>
@@ -931,6 +950,17 @@ document.querySelectorAll('.nav-btn, .bn-btn').forEach(btn=>{
 });
 document.getElementById('viewFlatsBtn').addEventListener('click', ()=>{ ui.flatsFilter='all'; goScreen('flats'); });
 document.getElementById('viewAllTxnBtn').addEventListener('click', ()=> goScreen('transactions'));
+document.getElementById('viewSevaBtn').addEventListener('click', ()=> goScreen('prasadam'));
+
+function renderSevaProgress(v){
+  const panel = document.getElementById('sevaProgressPanel');
+  panel.classList.toggle('hidden', v.sevaTotalSlots===0);
+  if(v.sevaTotalSlots===0) return;
+  document.getElementById('sevaProgressTitle').textContent = v.sevaOpenSlots+' Slot'+(v.sevaOpenSlots===1?'':'s')+' Still Need Volunteers';
+  document.getElementById('sevaProgressBar').style.width = v.sevaFilledPct+'%';
+  document.getElementById('legendSevaFilled').textContent = v.sevaFilledSlots+' Filled';
+  document.getElementById('legendSevaOpen').textContent = v.sevaOpenSlots+' Open';
+}
 document.getElementById('yearSelect').addEventListener('change', (e)=>{ ui.year = e.target.value; renderAll(); });
 
 document.querySelectorAll('#flatsFilterSeg .seg-btn').forEach(btn=>{

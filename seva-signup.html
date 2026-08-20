@@ -121,10 +121,14 @@ function render(){
         <div class="seva-signup-row">
           <span><span class="seva-signup-flat">${escapeHtml(s.flat_id)}</span> — <span class="seva-signup-name">${escapeHtml(s.name)}</span></span>
         </div>`).join('') || '<div class="seva-empty">No one signed up yet.</div>';
+      const statusClass = list.length ? 'filled' : 'empty';
+      const statusTag = list.length
+        ? `<span class="seva-status-tag filled">SIGNED UP</span>`
+        : `<span class="seva-status-tag empty">OPEN</span>`;
       return `
-        <div class="seva-session">
+        <div class="seva-session ${statusClass}">
           <div class="seva-session-head">
-            <div class="seva-session-title">${sess.icon} ${sess.label}</div>
+            <div class="seva-session-title">${sess.icon} ${sess.label} ${statusTag}</div>
             <span class="subtle" style="font-size:11px">${list.length} signed up</span>
           </div>
           <div class="seva-signup-list">${rows}</div>
