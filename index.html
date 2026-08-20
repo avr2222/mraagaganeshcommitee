@@ -725,12 +725,18 @@
       </div>
       <div class="modal-body">
         <div class="field">
-          <label>DATE</label>
+          <label>FROM DATE</label>
           <input type="date" id="sevaDayDate">
+        </div>
+        <div class="field">
+          <label>TO DATE (OPTIONAL)</label>
+          <input type="date" id="sevaDayDateTo">
+          <div class="hint">Leave blank to add just one day. Set this to add every day in the range at once — each day automatically gets both a Morning and an Evening sign-up slot.</div>
         </div>
         <div class="field">
           <label>LABEL (OPTIONAL)</label>
           <input type="text" id="sevaDayLabel" placeholder="e.g. Day 1 — Chaturthi">
+          <div class="hint">For a multi-day range, this is used as a prefix — e.g. "Chaturthi" becomes "Chaturthi — Day 1", "Chaturthi — Day 2", ...</div>
         </div>
       </div>
       <div class="modal-actions">

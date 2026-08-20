@@ -154,6 +154,13 @@ create table if not exists public.ganesh_activity_log (
 
 -- ============================================================
 -- Auto-create a profile (role: viewer) whenever someone signs up
+-- THROUGH THIS APP specifically -- auth.users is shared by the whole
+-- Supabase project, so if any other app also uses this same project
+-- for its own sign-ups, this trigger would otherwise create an
+-- unwanted ganesh_profiles row (and Users & Roles list entry) for
+-- every one of THEIR users too. The app's sign-up call tags its
+-- metadata with app:'gpep'; we only auto-create a profile when that
+-- tag is present, so unrelated users never show up here at all.
 -- ============================================================
 create or replace function public.handle_new_user()
 returns trigger
@@ -161,8 +168,10 @@ language plpgsql
 security definer set search_path = public
 as $$
 begin
-  insert into public.ganesh_profiles (id, email, full_name, role)
-  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', new.email), 'viewer');
+  if new.raw_user_meta_data->>'app' = 'gpep' then
+    insert into public.ganesh_profiles (id, email, full_name, role)
+    values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', new.email), 'viewer');
+  end if;
   return new;
 end;
 $$;
@@ -183,6 +192,23 @@ security definer set search_path = public
 as $$
   select role from public.ganesh_profiles where id = auth.uid();
 $$;
+
+-- ============================================================
+-- Public flat picker for the anonymous prasadam seva sign-up page.
+-- Returns ONLY flat id + label (never owner/tenant names) to anyone,
+-- logged in or not -- so the public link's flat dropdown works
+-- without exposing the residents directory or requiring the visitor
+-- to be able to read the full ganesh_flats table.
+-- ============================================================
+create or replace function public.ganesh_public_flat_list()
+returns table(id text, label text)
+language sql
+stable
+security definer set search_path = public
+as $$
+  select id, label from public.ganesh_flats order by id;
+$$;
+grant execute on function public.ganesh_public_flat_list() to anon, authenticated;
 
 -- ============================================================
 -- Row Level Security
@@ -281,10 +307,11 @@ drop policy if exists ganesh_expenses_delete on public.ganesh_expenses;
 create policy ganesh_expenses_delete on public.ganesh_expenses for delete
   using (public.current_role() in ('super_admin','treasurer'));
 
--- ---- prasadam_days: anyone logged in can view; only Super Admin manages ----
+-- ---- prasadam_days: PUBLIC read (no login) so the shareable sign-up ----
+-- ---- link works for anonymous visitors; only Super Admin manages ----
 drop policy if exists ganesh_prasadam_days_select on public.ganesh_prasadam_days;
 create policy ganesh_prasadam_days_select on public.ganesh_prasadam_days for select
-  using (auth.uid() is not null);
+  using (true);
 
 drop policy if exists ganesh_prasadam_days_insert on public.ganesh_prasadam_days;
 create policy ganesh_prasadam_days_insert on public.ganesh_prasadam_days for insert
@@ -294,15 +321,16 @@ drop policy if exists ganesh_prasadam_days_delete on public.ganesh_prasadam_days
 create policy ganesh_prasadam_days_delete on public.ganesh_prasadam_days for delete
   using (public.current_role() = 'super_admin');
 
--- ---- prasadam_signups: anyone logged in can view AND sign up; ----
--- ---- only Super Admin can edit/delete (corrections) ----
+-- ---- prasadam_signups: PUBLIC read AND sign-up (no login) so anyone with ----
+-- ---- the shareable link can add their name; only Super Admin edits/deletes ----
+-- ---- (corrections). created_by stays null for public/anonymous sign-ups. ----
 drop policy if exists ganesh_prasadam_signups_select on public.ganesh_prasadam_signups;
 create policy ganesh_prasadam_signups_select on public.ganesh_prasadam_signups for select
-  using (auth.uid() is not null);
+  using (true);
 
 drop policy if exists ganesh_prasadam_signups_insert on public.ganesh_prasadam_signups;
 create policy ganesh_prasadam_signups_insert on public.ganesh_prasadam_signups for insert
-  with check (auth.uid() is not null);
+  with check (true);
 
 drop policy if exists ganesh_prasadam_signups_update on public.ganesh_prasadam_signups;
 create policy ganesh_prasadam_signups_update on public.ganesh_prasadam_signups for update

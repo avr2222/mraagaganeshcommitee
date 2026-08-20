@@ -204,7 +204,7 @@ document.getElementById('authSubmitBtn').addEventListener('click', async ()=>{
       const { error } = await sb.auth.signInWithPassword({ email, password });
       if(error){ setAuthError(error.message); }
     } else {
-      const { data, error } = await sb.auth.signUp({ email, password, options:{ data:{ full_name: fullName || email } } });
+      const { data, error } = await sb.auth.signUp({ email, password, options:{ data:{ full_name: fullName || email, app: 'gpep' } } });
       if(error){ setAuthError(error.message); }
       else if(data && !data.session){
         setAuthError('Account created. Please check your email to confirm before signing in.');
@@ -1341,6 +1341,7 @@ const sevaDayModal = document.getElementById('sevaDayModal');
 function openSevaDayModal(){
   if(!perms.isAdmin){ showToast('Only a Super Admin can add seva days'); return; }
   document.getElementById('sevaDayDate').value = '';
+  document.getElementById('sevaDayDateTo').value = '';
   document.getElementById('sevaDayLabel').value = '';
   sevaDayModal.classList.remove('hidden');
 }
@@ -1348,21 +1349,51 @@ function closeSevaDayModal(){ sevaDayModal.classList.add('hidden'); }
 document.getElementById('addSevaDayBtn').addEventListener('click', openSevaDayModal);
 document.getElementById('closeSevaDayModal').addEventListener('click', closeSevaDayModal);
 document.getElementById('cancelSevaDayBtn').addEventListener('click', closeSevaDayModal);
+const MAX_SEVA_DAY_RANGE = 45; // sane cap so a typo in "to date" can't try to insert years of rows
 document.getElementById('saveSevaDayBtn').addEventListener('click', async ()=>{
   if(!perms.isAdmin) return;
-  const date = document.getElementById('sevaDayDate').value;
+  const fromDate = document.getElementById('sevaDayDate').value;
+  const toDateRaw = document.getElementById('sevaDayDateTo').value;
   const label = document.getElementById('sevaDayLabel').value.trim();
-  if(!date){ showToast('Please pick a date'); return; }
+  if(!fromDate){ showToast('Please pick a from date'); return; }
+  const toDate = toDateRaw && toDateRaw > fromDate ? toDateRaw : fromDate;
+
+  // Build one row per date in [fromDate, toDate]. For a single day, label is
+  // used as-is; for a range, each day gets "<label> — Day N" so they're
+  // distinguishable (or just "Day N" if no label was given).
+  const rows = [];
+  let cur = new Date(fromDate+'T00:00:00');
+  const end = new Date(toDate+'T00:00:00');
+  let dayNum = 1;
+  const isRange = toDate !== fromDate;
+  while(cur <= end){
+    if(dayNum > MAX_SEVA_DAY_RANGE){ break; }
+    const iso = cur.toISOString().slice(0,10);
+    const rowLabel = isRange ? (label ? `${label} — Day ${dayNum}` : `Day ${dayNum}`) : label;
+    rows.push({ seva_date: iso, label: rowLabel });
+    cur.setDate(cur.getDate()+1);
+    dayNum++;
+  }
+  if(!rows.length){ showToast('Nothing to add'); return; }
+
   const btn = document.getElementById('saveSevaDayBtn');
   btn.disabled = true;
-  const { error } = await sb.from('ganesh_prasadam_days').insert({ seva_date: date, label });
+  const { data: inserted, error } = await sb.from('ganesh_prasadam_days')
+    .upsert(rows, { onConflict: 'seva_date', ignoreDuplicates: true })
+    .select();
   btn.disabled = false;
-  if(error){ showToast(error.code==='23505' ? 'That date has already been added' : 'Error: '+error.message); return; }
-  await logActivity('Added seva day', date+(label?' — '+label:''));
+  if(error){ showToast('Error: '+error.message); return; }
+  const addedCount = inserted ? inserted.length : rows.length;
+  const skipped = rows.length - addedCount;
+  if(rows.length === 1){
+    await logActivity('Added seva day', fromDate+(label?' — '+label:''));
+  } else {
+    await logActivity('Added seva days', `${fromDate} to ${toDate} (${addedCount} day${addedCount===1?'':'s'} added${skipped?', '+skipped+' already existed':''})`);
+  }
   await fetchAllData();
   closeSevaDayModal();
   renderAll();
-  showToast('Seva day added');
+  showToast(rows.length===1 ? 'Seva day added' : `${addedCount} seva day${addedCount===1?'':'s'} added${skipped?' ('+skipped+' already existed)':''}`);
 });
 document.getElementById('sevaDaysList').addEventListener('click', async (e)=>{
   const delDayBtn = e.target.closest('.seva-day-delete');
