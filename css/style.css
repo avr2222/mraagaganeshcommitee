@@ -207,6 +207,7 @@ button{cursor:pointer}
 }
 .field textarea{resize:none}
 .hint{font-size:12px;color:var(--slate-400);margin-top:6px}
+.hint.date-confirm{color:var(--orange-dark);font-weight:700;min-height:15px}
 .amount-input{display:flex;align-items:center;gap:6px;border:1px solid var(--slate-200);border-radius:12px;padding:8px 14px}
 .amount-input span{font-size:22px;font-weight:800;color:var(--slate-400)}
 .amount-input input{border:none;outline:none;font-size:24px;font-weight:800;color:var(--ink);width:100%}

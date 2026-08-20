@@ -27,7 +27,35 @@ function fmtDate(iso){
   if(isNaN(d)) return iso;
   return d.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
 }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
+// NOTE: deliberately NOT using toISOString() here -- it converts to UTC,
+// which rolls the calendar date back a day for any timezone ahead of UTC
+// (e.g. IST, UTC+5:30) during the first few hours of the local day.
+function todayISO(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+/* Native <input type="date"> pickers render in whatever format the user's
+   browser/OS locale is set to (often US MM/DD/YYYY) -- there is no way to
+   force that from the page itself. To avoid any ambiguity, every date field
+   pairs with a small hint element that spells the picked date out in full,
+   Indian style ("14 September 2026"), updated live as the user picks. */
+function wireDateConfirm(inputId, hintId){
+  const input = document.getElementById(inputId);
+  const hint = document.getElementById(hintId);
+  if(!input || !hint) return;
+  const update = () => {
+    if(!input.value){ hint.textContent = ''; return; }
+    const d = new Date(input.value+'T00:00:00');
+    hint.textContent = isNaN(d) ? '' : ('= ' + d.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}));
+  };
+  input.addEventListener('input', update);
+  input.addEventListener('change', update);
+  update();
+}
+[['donDate','donDateHint'],['expDate','expDateHint'],['transferDate','transferDateHint'],
+ ['sevaDayDate','sevaDayDateHint'],['sevaDayDateTo','sevaDayDateToHint']]
+  .forEach(([inputId,hintId]) => wireDateConfirm(inputId,hintId));
+
 /* Simple dependency-free SVG donut chart. segments: [{value,color}] */
 function buildDonutSVG(segments, size, thickness){
   size = size || 150; thickness = thickness || 20;
@@ -1361,6 +1389,9 @@ document.getElementById('saveSevaDayBtn').addEventListener('click', async ()=>{
   // Build one row per date in [fromDate, toDate]. For a single day, label is
   // used as-is; for a range, each day gets "<label> — Day N" so they're
   // distinguishable (or just "Day N" if no label was given).
+  // NOTE: use LOCAL date parts (not toISOString, which converts to UTC and
+  // rolls the date back a day in any timezone ahead of UTC, e.g. IST).
+  const toLocalISO = (d) => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   const rows = [];
   let cur = new Date(fromDate+'T00:00:00');
   const end = new Date(toDate+'T00:00:00');
@@ -1368,7 +1399,7 @@ document.getElementById('saveSevaDayBtn').addEventListener('click', async ()=>{
   const isRange = toDate !== fromDate;
   while(cur <= end){
     if(dayNum > MAX_SEVA_DAY_RANGE){ break; }
-    const iso = cur.toISOString().slice(0,10);
+    const iso = toLocalISO(cur);
     const rowLabel = isRange ? (label ? `${label} — Day ${dayNum}` : `Day ${dayNum}`) : label;
     rows.push({ seva_date: iso, label: rowLabel });
     cur.setDate(cur.getDate()+1);
