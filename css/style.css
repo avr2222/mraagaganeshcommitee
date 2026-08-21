@@ -346,6 +346,28 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .gsr-row-amt{font-weight:800;font-size:12.5px;white-space:nowrap;flex-shrink:0}
 .gsr-empty{padding:16px;text-align:center;font-size:12.5px;color:var(--slate-400)}
 
+/* Bulk import */
+.bi-upload-row{display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.bi-upload-btn{flex:1;min-width:180px;display:flex;align-items:center;justify-content:center;gap:6px;
+  border:1.5px dashed var(--slate-200);border-radius:10px;padding:12px;font-size:12.5px;font-weight:700;
+  color:var(--slate-600);cursor:pointer;text-align:center;background:var(--slate-50)}
+.bi-upload-btn:hover{border-color:var(--orange);color:var(--orange-dark)}
+.bi-row-type{font-size:9.5px;font-weight:800;padding:2px 6px;border-radius:6px;text-transform:uppercase;white-space:nowrap}
+.bi-row-type.donation{background:#DCFCE7;color:var(--green)}
+.bi-row-type.expense{background:#FEE2E2;color:var(--red)}
+.bi-row-type.pledge{background:#FEF3C7;color:#92400E}
+.bulk-import-preview{max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:2px}
+.bi-row{display:flex;align-items:center;gap:10px;background:var(--slate-50);border:1px solid var(--slate-100);border-radius:10px;padding:8px 10px}
+.bi-row.bi-dupe{background:#FFFBEB;border-color:#FDE68A}
+.bi-row.bi-unmatched{background:#FEE2E2;border-color:#FECACA}
+.bi-row-left{flex:1;min-width:0;display:flex;align-items:center;gap:8px}
+.bi-row-title{font-size:13px;font-weight:700;color:var(--ink)}
+.bi-row-sub{font-size:11.5px;color:var(--slate-400);font-weight:600}
+.bi-row-amt{font-weight:800;font-size:12.5px;color:var(--green);white-space:nowrap}
+.bi-flag{font-size:10px;font-weight:800;padding:2px 6px;border-radius:6px;white-space:nowrap}
+.bi-flag.dupe{background:#FEF3C7;color:#92400E}
+.bi-flag.unmatched{background:#FEE2E2;color:var(--red)}
+
 /* Pledges */
 .pledge-summary{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .pledge-summary-amt{font-family:'Manrope',sans-serif;font-size:24px;font-weight:800;color:var(--amber)}

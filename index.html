@@ -20,6 +20,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Bulk Import: parse uploaded Excel/CSV cash-book files and extract text from uploaded PDFs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
 
@@ -326,6 +329,7 @@
         <div class="head-actions">
           <button class="btn btn-ghost" id="exportDonationsCsvBtnList">⬇ CSV</button>
           <button class="btn btn-ghost" id="exportDonationsBtn">⬇ Export Report</button>
+          <button class="btn btn-ghost" id="bulkImportBtn">📥 Bulk Import</button>
           <button class="btn btn-orange" id="addDonationBtnList">+ Add Donation</button>
         </div>
       </div>
@@ -580,6 +584,63 @@
       <div class="modal-actions">
         <button class="btn btn-flat" id="cancelPledgeBtn">Cancel</button>
         <button class="btn btn-orange" id="savePledgeBtn">Save Pledge</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk import modal -->
+  <div class="modal-overlay hidden" id="bulkImportModal">
+    <div class="modal" style="max-width:640px">
+      <div class="modal-head">
+        <div class="modal-title">Bulk Import Donations</div>
+        <button class="modal-close" id="closeBulkImportModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="bulkImportStep1">
+          <div class="bi-upload-row">
+            <label class="bi-upload-btn" for="bulkImportExcelFile">
+              📊 Upload Excel / CSV Cash Book
+              <input type="file" id="bulkImportExcelFile" accept=".xlsx,.xls,.csv" class="hidden">
+            </label>
+            <label class="bi-upload-btn" for="bulkImportPdfFile">
+              📄 Upload PDF (extracts text below)
+              <input type="file" id="bulkImportPdfFile" accept=".pdf" class="hidden">
+            </label>
+          </div>
+          <p class="hint" id="bulkImportFileStatus" style="margin:-2px 0 12px"></p>
+
+          <p class="hint" style="margin:-4px 0 10px">Or paste your daily WhatsApp update below — lines like "Flat 001 – Babu – ₹10,000" are recognized automatically. Non-donation lines (greetings, UPI instructions, etc.) are ignored.</p>
+          <div class="field">
+            <label>PASTE WHATSAPP TEXT</label>
+            <textarea id="bulkImportText" rows="10" placeholder="🙏 Ganesh Festival 2026 – Donations Received 🙏&#10;1. Flat 001 – Babu – ₹10,000&#10;2. Flat 002 – Harsha – ₹5,000&#10;..."></textarea>
+          </div>
+          <div style="display:flex;gap:10px">
+            <div class="field" style="flex:1">
+              <label>DATE FOR THIS BATCH (PASTED TEXT / PDF ONLY)</label>
+              <input type="date" id="bulkImportDate">
+              <div class="hint date-confirm" id="bulkImportDateHint"></div>
+            </div>
+            <div class="field" style="flex:1">
+              <label>PAYMENT MODE (FOR CASH ROWS)</label>
+              <div class="mode-row" id="bulkImportModeRow">
+                <button class="mode-btn" data-mode="UPI">UPI</button>
+                <button class="mode-btn" data-mode="Cash">Cash</button>
+                <button class="mode-btn" data-mode="Bank">Bank</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="bulkImportStep2" class="hidden">
+          <p class="hint" style="margin:-4px 0 10px" id="bulkImportSummary"></p>
+          <div id="bulkImportPreviewList" class="bulk-import-preview"></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="cancelBulkImportBtn">Cancel</button>
+        <button class="btn btn-flat hidden" id="backBulkImportBtn">← Back</button>
+        <button class="btn btn-orange" id="parseBulkImportBtn">Preview →</button>
+        <button class="btn btn-orange hidden" id="confirmBulkImportBtn">Import Selected</button>
       </div>
     </div>
   </div>

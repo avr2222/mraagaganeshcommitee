@@ -53,7 +53,8 @@ function wireDateConfirm(inputId, hintId){
   update();
 }
 [['donDate','donDateHint'],['expDate','expDateHint'],['transferDate','transferDateHint'],
- ['sevaDayDate','sevaDayDateHint'],['sevaDayDateTo','sevaDayDateToHint'],['pledgeDate','pledgeDateHint']]
+ ['sevaDayDate','sevaDayDateHint'],['sevaDayDateTo','sevaDayDateToHint'],['pledgeDate','pledgeDateHint'],
+ ['bulkImportDate','bulkImportDateHint']]
   .forEach(([inputId,hintId]) => wireDateConfirm(inputId,hintId));
 
 /* Simple dependency-free SVG donut chart. segments: [{value,color}] */
@@ -1414,6 +1415,377 @@ function renderPledges(v){
 }
 
 /* ============================================================
+   BULK IMPORT — paste the daily WhatsApp donation update, upload
+   an Excel/CSV cash-book export, or upload a PDF, and import
+   every recognized line in one go instead of typing each entry
+   into the Add Donation / Add Expense form by hand.
+   ============================================================ */
+const bulkImportModal = document.getElementById('bulkImportModal');
+let bulkImportRows = [];
+
+// Recognizes lines like:
+//   "1. Flat 001 – Babu – ₹10,000"
+//   "Flat 212 – Pramod – 🍬 *Laddu Sponsor*"
+//   "51. Flat 308 – Srinivas – 🪔 *Ganesh Idol* (in-kind)"
+function parseWhatsAppDonationText(text){
+  const lines = (text||'').split('\n');
+  const rows = [];
+  const flatLineRe = /Flat\s*[#:]?\s*(\d{2,3})\s*[-–—]\s*([^-–—\n]+?)\s*[-–—]\s*(.+)/i;
+  lines.forEach(rawLine=>{
+    const line = rawLine.trim();
+    if(!line) return;
+    const m = line.match(flatLineRe);
+    if(!m) return;
+    const flatCode = m[1].padStart(3,'0');
+    const name = m[2].replace(/^\W+|\W+$/g,'').trim();
+    let valuePart = m[3].trim();
+    const amountMatch = valuePart.match(/₹\s*([\d,]+(?:\.\d+)?)/);
+    if(amountMatch){
+      const amount = Number(amountMatch[1].replace(/,/g,''));
+      if(name && amount>0){
+        rows.push({ flatCode, name, kind:'cash', amount, itemDescription:'' });
+      }
+    } else if(name){
+      // No ₹ amount found — treat as an in-kind contribution (idol, laddu sponsor, decoration, etc.)
+      const item = valuePart.replace(/[*_]/g,'').replace(/\(in-?kind\)/i,'').replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu,'').trim();
+      rows.push({ flatCode, name, kind:'in_kind', amount:0, itemDescription: item || 'In-kind contribution' });
+    }
+  });
+  return rows;
+}
+
+// Pulls a flat number and a donor name out of messy free-text cash-book
+// notes like "Flat-101 Murthy-yettogive", "Sunil Kumar 204", "016-Owner",
+// "Pramod-212(For laddu)", or a bare "210" with no name at all.
+function parseFlatAndNameFromNotes(notesRaw){
+  let text = String(notesRaw||'').trim();
+  if(!text) return null;
+  let note = '';
+  const parenMatch = text.match(/\(([^)]+)\)/);
+  if(parenMatch){ note = parenMatch[1].trim(); text = text.replace(/\([^)]*\)/g,'').trim(); }
+  // "yettogive" / "yet to give" marks a PLEDGE — promised but not actually
+  // handed over yet — not a received donation, even though the ledger's
+  // Cash In column may still show the promised amount.
+  const isPledge = /yet\s*to\s*give/i.test(text);
+  text = text.replace(/-?\s*yet\s*to\s*give/gi,'').trim();
+  const flatMatch = text.match(/\b(\d{1,3})\b/);
+  if(!flatMatch) return null;
+  const flatCode = flatMatch[1].padStart(3,'0');
+  let name = text.replace(flatMatch[0],'')
+    .replace(/\bflat\b[-\s]*/gi,'')
+    .replace(/^[-\s]+|[-\s]+$/g,'')
+    .replace(/[-\s]+/g,' ')
+    .trim();
+  return { flatCode, name, note, isPledge };
+}
+
+const MONTH_ABBR = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function parseLedgerDate(cell){
+  if(cell instanceof Date && !isNaN(cell)) return cell.getFullYear()+'-'+String(cell.getMonth()+1).padStart(2,'0')+'-'+String(cell.getDate()).padStart(2,'0');
+  const s = String(cell||'').trim();
+  if(!s) return null;
+  const m = s.match(/^(\d{1,2})[-\/\s]([A-Za-z]{3,})[-\/\s](\d{4})$/);
+  if(m){
+    const mon = MONTH_ABBR[m[2].slice(0,3).toLowerCase()];
+    if(mon!=null) return m[3]+'-'+String(mon+1).padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  }
+  const d = new Date(s);
+  if(!isNaN(d)) return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return null;
+}
+function parseLedgerAmount(cell){
+  const n = Number(String(cell||'').replace(/,/g,'').trim());
+  return isNaN(n) ? 0 : n;
+}
+// Finds the header row of a "Date | Notes | Cash In | Cash Out | Balance"
+// style cash-book export — tolerant of column order and minor naming.
+function findLedgerHeader(rows2D){
+  for(let i=0;i<rows2D.length;i++){
+    const row = (rows2D[i]||[]).map(c=>String(c||'').trim().toLowerCase());
+    const dateIdx = row.findIndex(c=>c==='date');
+    const notesIdx = row.findIndex(c=>/notes|description|particulars/.test(c));
+    const cashInIdx = row.findIndex(c=>/cash\s*in|credit|^amount$/.test(c));
+    if(dateIdx>=0 && notesIdx>=0 && cashInIdx>=0){
+      const cashOutIdx = row.findIndex(c=>/cash\s*out|debit/.test(c));
+      return { headerRowIdx:i, dateIdx, notesIdx, cashInIdx, cashOutIdx };
+    }
+  }
+  return null;
+}
+function parseLedgerWorkbookRows(rows2D){
+  const header = findLedgerHeader(rows2D);
+  if(!header) return null;
+  const out = [];
+  for(let i=header.headerRowIdx+1; i<rows2D.length; i++){
+    const row = rows2D[i]||[];
+    const notesRaw = String(row[header.notesIdx]||'').trim();
+    if(!notesRaw || /previous balance/i.test(notesRaw) || /^total\b/i.test(notesRaw) || /^balance$/i.test(notesRaw)) continue;
+    const cashIn = parseLedgerAmount(row[header.cashInIdx]);
+    const cashOut = header.cashOutIdx>=0 ? parseLedgerAmount(row[header.cashOutIdx]) : 0;
+    if(cashIn<=0 && cashOut<=0) continue;
+    const date = parseLedgerDate(row[header.dateIdx]) || todayISO();
+    if(cashIn>0){
+      const parsed = parseFlatAndNameFromNotes(notesRaw);
+      // A note mentioning a specific item (laddu, idol, prasadam, flowers, decoration,
+      // sponsorship of a specific thing) means the value was contributed as an
+      // in-kind donation, not handed over as cash — even though the ledger still
+      // records a rupee value for it in the Cash In column.
+      const inKindNote = parsed && parsed.note ? parsed.note : '';
+      const isInKind = /laddu|prasad|idol|flower|decoration|garland|fruit(s)?\b/i.test(inKindNote);
+      if(!parsed){ out.push({ source:'donation', date, flatCode:null, name: notesRaw, amount:cashIn, kind:'cash', itemDescription:'', note:'Imported from cash book', matched:false, flatId:null, flatLabel: notesRaw }); continue; }
+      const flatId = 'A'+parsed.flatCode;
+      const f = store.flats.find(x=>x.id===flatId);
+      if(parsed.isPledge){
+        out.push({
+          source:'pledge', date, flatCode: parsed.flatCode, flatId, flatLabel: f?f.label:flatId,
+          name: parsed.name || (f&&f.owner) || 'Resident', amount: cashIn,
+          note: parsed.note ? 'Imported from cash book — '+parsed.note : 'Imported from cash book',
+          matched: !!f,
+        });
+        continue;
+      }
+      out.push({
+        source:'donation', date, flatCode: parsed.flatCode, flatId, flatLabel: f?f.label:flatId,
+        name: parsed.name || (f&&f.owner) || 'Resident', kind: isInKind?'in_kind':'cash', amount: cashIn,
+        itemDescription: isInKind ? inKindNote : '',
+        note: parsed.note ? 'Imported from cash book — '+parsed.note : 'Imported from cash book',
+        matched: !!f,
+      });
+    } else {
+      out.push({
+        source:'expense', date, category:'Miscellaneous', description: notesRaw.replace(/\([^)]*\)/g,'').trim() || 'Imported expense',
+        amount: cashOut, note:'Imported from cash book', matched:true,
+      });
+    }
+  }
+  return out;
+}
+
+function openBulkImportModal(){
+  if(!perms.canDonations){ showToast('You do not have permission to add donations'); return; }
+  document.getElementById('bulkImportText').value = '';
+  document.getElementById('bulkImportExcelFile').value = '';
+  document.getElementById('bulkImportPdfFile').value = '';
+  document.getElementById('bulkImportFileStatus').textContent = '';
+  const dateInput = document.getElementById('bulkImportDate');
+  dateInput.value = todayISO();
+  dateInput.dispatchEvent(new Event('change'));
+  document.querySelectorAll('#bulkImportModeRow .mode-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode==='UPI'));
+  document.getElementById('bulkImportStep1').classList.remove('hidden');
+  document.getElementById('bulkImportStep2').classList.add('hidden');
+  document.getElementById('parseBulkImportBtn').classList.remove('hidden');
+  document.getElementById('confirmBulkImportBtn').classList.add('hidden');
+  document.getElementById('backBulkImportBtn').classList.add('hidden');
+  bulkImportModal.classList.remove('hidden');
+}
+function closeBulkImportModal(){ bulkImportModal.classList.add('hidden'); }
+document.getElementById('bulkImportBtn').addEventListener('click', openBulkImportModal);
+document.getElementById('closeBulkImportModal').addEventListener('click', closeBulkImportModal);
+document.getElementById('cancelBulkImportBtn').addEventListener('click', closeBulkImportModal);
+document.getElementById('bulkImportModeRow').addEventListener('click', (e)=>{
+  const btn = e.target.closest('.mode-btn'); if(!btn) return;
+  setModeButtons('bulkImportModeRow', btn.dataset.mode);
+});
+
+function goToBulkImportPreview(){
+  renderBulkImportPreview();
+  document.getElementById('bulkImportStep1').classList.add('hidden');
+  document.getElementById('bulkImportStep2').classList.remove('hidden');
+  document.getElementById('parseBulkImportBtn').classList.add('hidden');
+  document.getElementById('confirmBulkImportBtn').classList.remove('hidden');
+  document.getElementById('backBulkImportBtn').classList.remove('hidden');
+}
+
+function markDuplicates(rows){
+  return rows.map(r=>{
+    let isDuplicate = false;
+    if(r.source==='donation' && r.flatId){
+      isDuplicate = store.donations.some(d=> d.flat_id===r.flatId && (d.name||'').toLowerCase()===(r.name||'').toLowerCase()
+        && d.date===r.date && Number(d.amount)===Number(r.amount));
+    } else if(r.source==='pledge' && r.flatId){
+      isDuplicate = store.pledges.some(p=> p.flat_id===r.flatId && (p.name||'').toLowerCase()===(r.name||'').toLowerCase()
+        && p.pledged_date===r.date && Number(p.amount)===Number(r.amount));
+    } else if(r.source==='expense'){
+      isDuplicate = store.expenses.some(e=> (e.description||'').toLowerCase()===(r.description||'').toLowerCase()
+        && e.date===r.date && Number(e.amount)===Number(r.amount));
+    }
+    return Object.assign({}, r, { isDuplicate, included: !isDuplicate });
+  });
+}
+
+document.getElementById('parseBulkImportBtn').addEventListener('click', ()=>{
+  const text = document.getElementById('bulkImportText').value;
+  const batchDate = document.getElementById('bulkImportDate').value || todayISO();
+  const parsed = parseWhatsAppDonationText(text);
+  if(!parsed.length){ showToast('No "Flat NNN – Name – ₹Amount" style lines found — paste text or upload a file first'); return; }
+
+  const rows = parsed.map(r=>{
+    const flatId = 'A'+r.flatCode;
+    const f = store.flats.find(x=>x.id===flatId);
+    return Object.assign({}, r, {
+      source:'donation', date: batchDate, flatId, matched: !!f, flatLabel: f ? f.label : flatId,
+      note:'Imported from WhatsApp daily update',
+    });
+  });
+  bulkImportRows = markDuplicates(rows);
+  goToBulkImportPreview();
+});
+
+/* ---------- Excel / CSV cash-book upload ---------- */
+document.getElementById('bulkImportExcelFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('bulkImportFileStatus');
+  if(typeof XLSX === 'undefined'){ statusEl.textContent = 'Could not load the spreadsheet reader — check your internet connection and try again.'; return; }
+  statusEl.textContent = 'Reading '+file.name+'…';
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    try{
+      const wb = XLSX.read(new Uint8Array(ev.target.result), { type:'array', cellDates:true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows2D = XLSX.utils.sheet_to_json(sheet, { header:1, raw:true, defval:'' });
+      const parsed = parseLedgerWorkbookRows(rows2D);
+      if(!parsed){ statusEl.textContent = 'Could not find Date / Notes / Cash In columns in that file — try pasting the text instead.'; return; }
+      if(!parsed.length){ statusEl.textContent = 'No donation or expense rows found in that file.'; return; }
+      bulkImportRows = markDuplicates(parsed);
+      statusEl.textContent = '';
+      goToBulkImportPreview();
+    }catch(err){
+      statusEl.textContent = 'Could not read that file: '+(err.message||err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+/* ---------- PDF upload: extract text into the textarea for the normal parser ---------- */
+document.getElementById('bulkImportPdfFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('bulkImportFileStatus');
+  if(typeof pdfjsLib === 'undefined'){ statusEl.textContent = 'Could not load the PDF reader — check your internet connection and try again.'; return; }
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  statusEl.textContent = 'Reading '+file.name+'…';
+  const reader = new FileReader();
+  reader.onload = async (ev)=>{
+    try{
+      const pdf = await pdfjsLib.getDocument({ data:new Uint8Array(ev.target.result) }).promise;
+      let fullText = '';
+      for(let p=1; p<=pdf.numPages; p++){
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        fullText += content.items.map(it=>it.str).join(' ') + '\n';
+      }
+      document.getElementById('bulkImportText').value = fullText.trim();
+      statusEl.textContent = 'Extracted text from '+file.name+' — review below, then click Preview.';
+    }catch(err){
+      statusEl.textContent = 'Could not read that PDF: '+(err.message||err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+document.getElementById('backBulkImportBtn').addEventListener('click', ()=>{
+  document.getElementById('bulkImportStep1').classList.remove('hidden');
+  document.getElementById('bulkImportStep2').classList.add('hidden');
+  document.getElementById('parseBulkImportBtn').classList.remove('hidden');
+  document.getElementById('confirmBulkImportBtn').classList.add('hidden');
+  document.getElementById('backBulkImportBtn').classList.add('hidden');
+});
+
+function renderBulkImportPreview(){
+  const listEl = document.getElementById('bulkImportPreviewList');
+  listEl.innerHTML = bulkImportRows.map((r,i)=>{
+    const flag = !r.matched ? '<span class="bi-flag unmatched">NO SUCH FLAT</span>'
+      : r.isDuplicate ? '<span class="bi-flag dupe">POSSIBLE DUPLICATE</span>' : '';
+    const rowClass = !r.matched ? 'bi-unmatched' : r.isDuplicate ? 'bi-dupe' : '';
+    const typeTag = r.source==='expense' ? '<span class="bi-row-type expense">Expense</span>'
+      : r.source==='pledge' ? '<span class="bi-row-type pledge">Pledge</span>'
+      : '<span class="bi-row-type donation">Donation</span>';
+    const title = r.source==='expense' ? (r.category+' — '+r.description) : (escapeHtml(r.flatLabel)+' — '+escapeHtml(r.name));
+    const sub = r.source==='expense' ? fmtDate(r.date)
+      : r.source==='pledge' ? ('Flat '+escapeHtml(r.flatCode||'?')+' · promised '+fmtDate(r.date)+(r.matched?'':' (not found in Flats list)'))
+      : ('Flat '+escapeHtml(r.flatCode||'?')+' · '+fmtDate(r.date)+(r.matched?'':' (not found in Flats list)'));
+    const amtText = r.source==='expense' ? fmtINR(r.amount)
+      : r.source==='pledge' ? fmtINR(r.amount)+' (pledged)'
+      : (r.kind==='cash' ? fmtINR(r.amount) : '🎁 '+escapeHtml(r.itemDescription));
+    return `
+      <label class="bi-row ${rowClass}">
+        <input type="checkbox" class="bi-check" data-idx="${i}" ${r.included && r.matched ? 'checked' : ''} ${r.matched ? '' : 'disabled'}>
+        <div class="bi-row-left">
+          ${typeTag}
+          <div>
+            <div class="bi-row-title">${title}</div>
+            <div class="bi-row-sub">${sub}</div>
+          </div>
+        </div>
+        ${flag}
+        <div class="bi-row-amt">${amtText}</div>
+      </label>`;
+  }).join('') || '<p class="empty-sub">No rows recognized.</p>';
+
+  const includedCount = bulkImportRows.filter(r=>r.included && r.matched).length;
+  const donationTotal = bulkImportRows.filter(r=>r.included && r.matched && r.source==='donation' && r.kind==='cash').reduce((s,r)=>s+r.amount,0);
+  const pledgeTotal = bulkImportRows.filter(r=>r.included && r.matched && r.source==='pledge').reduce((s,r)=>s+r.amount,0);
+  const expenseTotal = bulkImportRows.filter(r=>r.included && r.matched && r.source==='expense').reduce((s,r)=>s+r.amount,0);
+  document.getElementById('bulkImportSummary').textContent =
+    `Found ${bulkImportRows.length} row${bulkImportRows.length===1?'':'s'} — ${includedCount} selected: ${fmtINR(donationTotal)} in donations`
+    + (pledgeTotal>0 ? `, ${fmtINR(pledgeTotal)} in pledges (not yet received)` : '')
+    + (expenseTotal>0 ? `, ${fmtINR(expenseTotal)} in expenses.` : '.');
+}
+
+document.getElementById('bulkImportPreviewList').addEventListener('change', (e)=>{
+  const check = e.target.closest('.bi-check'); if(!check) return;
+  bulkImportRows[Number(check.dataset.idx)].included = check.checked;
+  renderBulkImportPreview();
+});
+
+document.getElementById('confirmBulkImportBtn').addEventListener('click', async ()=>{
+  if(!perms.canDonations){ showToast('You do not have permission to add donations'); return; }
+  const mode = document.querySelector('#bulkImportModeRow .mode-btn.active')?.dataset.mode || 'UPI';
+  const toImport = bulkImportRows.filter(r=>r.included && r.matched);
+  if(!toImport.length){ showToast('Nothing selected to import'); return; }
+
+  const btn = document.getElementById('confirmBulkImportBtn');
+  btn.disabled = true;
+  let donationCount = 0, expenseCount = 0, pledgeCount = 0;
+  for(const r of toImport){
+    if(r.source==='expense'){
+      if(!perms.canExpenses) continue;
+      const { error } = await sb.from('ganesh_expenses').insert({
+        category: r.category, description: r.description, amount: r.amount, mode:'Cash', date: r.date, note: r.note,
+        created_by: profile.id, recorded_by: profile.id, recorded_by_name: displayName(profile),
+      });
+      if(!error) expenseCount++;
+    } else if(r.source==='pledge'){
+      const { error } = await sb.from('ganesh_pledges').insert({
+        flat_id: r.flatId, name: r.name, amount: r.amount, pledged_date: r.date, note: r.note,
+        status: 'pending', created_by: profile.id,
+      });
+      if(!error) pledgeCount++;
+    } else {
+      const payload = {
+        flat_id: r.flatId, name: r.name, kind: r.kind, date: r.date,
+        note: r.note, created_by: profile.id, collected_by: profile.id, collected_by_name: displayName(profile),
+        amount: r.amount,
+        mode: r.kind==='cash' ? mode : '',
+        item_description: r.kind==='in_kind' ? r.itemDescription : '',
+      };
+      const { error } = await sb.from('ganesh_donations').insert(payload);
+      if(!error) donationCount++;
+    }
+  }
+  btn.disabled = false;
+  const summary = donationCount+' donation'+(donationCount===1?'':'s')
+    + (pledgeCount ? ' and '+pledgeCount+' pledge'+(pledgeCount===1?'':'s') : '')
+    + (expenseCount ? ' and '+expenseCount+' expense'+(expenseCount===1?'':'s') : '');
+  await logActivity('Bulk imported', summary);
+  await fetchAllData();
+  closeBulkImportModal();
+  renderAll();
+  showToast(summary+' imported ✓');
+});
+
+/* ============================================================
    EXPENSE MODAL
    ============================================================ */
 const expenseModal = document.getElementById('expenseModal');
@@ -2301,7 +2673,7 @@ document.getElementById('clearAllBtn').addEventListener('click', async ()=>{
 });
 
 /* ---------- close modals on overlay click ---------- */
-const ALL_MODALS = [donationModal, pledgeModal, expenseModal, flatModal, settingsModal, sevaDayModal, sevaSignupModal, transferModal, budgetModal, compareYearsModal];
+const ALL_MODALS = [donationModal, pledgeModal, bulkImportModal, expenseModal, flatModal, settingsModal, sevaDayModal, sevaSignupModal, transferModal, budgetModal, compareYearsModal];
 ALL_MODALS.forEach(modal=>{
   modal.addEventListener('click', (e)=>{ if(e.target===modal){ modal.classList.add('hidden'); if(modal===donationModal) ui.pledgeBeingFulfilled = null; } });
 });
