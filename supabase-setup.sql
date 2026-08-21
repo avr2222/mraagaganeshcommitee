@@ -41,7 +41,12 @@ create table if not exists public.ganesh_flats (
 --                   amount is an optional estimated value (can be 0)
 create table if not exists public.ganesh_donations (
   id uuid primary key default gen_random_uuid(),
-  flat_id text not null references public.ganesh_flats(id) on delete restrict,
+  -- Nullable: an old cash-book row sometimes names a donor with no way to
+  -- identify their flat (a long-vacated tenant, a name nobody recognizes).
+  -- Rather than force a guess, such donations are kept with flat_id = null
+  -- and shown as "Unknown / Vacated Tenant" — they still count toward the
+  -- year's total collected, but are excluded from any per-flat tracking.
+  flat_id text references public.ganesh_flats(id) on delete restrict,
   name text not null default 'Resident',
   kind text not null default 'cash' check (kind in ('cash','in_kind')),
   amount numeric(12,2) not null default 0,
@@ -94,6 +99,10 @@ create table if not exists public.ganesh_expenses (
   created_at timestamptz not null default now()
 );
 alter table public.ganesh_expenses add column if not exists bill_url text;
+
+-- Migration for databases created before "Unknown / Vacated Tenant" support —
+-- safe to re-run, a no-op once flat_id is already nullable.
+alter table public.ganesh_donations alter column flat_id drop not null;
 
 -- ---------- prasadam seva: days + sign-ups ----------
 -- Super Admin adds however many days a given year needs (3, 5, 7, ...).

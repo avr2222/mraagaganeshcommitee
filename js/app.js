@@ -354,14 +354,15 @@ function computeView(){
     const isInKind = d.kind === 'in_kind';
     const amountDisplay = (isInKind && !(d.amount>0)) ? '🎁 '+(d.item_description||'Item') : fmtINR(d.amount);
     const signedDisplay = (isInKind && !(d.amount>0)) ? '🎁 '+(d.item_description||'Item') : '+'+fmtINR(d.amount);
+    const flatLabel = f ? f.label : (d.flat_id || 'Unknown / Vacated Tenant');
     return {
       id:d.id, type:'in', typeLabel:'Money In',
-      title:(f?f.label:d.flat_id)+' • '+d.name,
+      title:flatLabel+' • '+d.name,
       subtitle: isInKind ? 'In-Kind • '+(d.item_description||'Item') : 'Donation • '+d.mode,
       mode: isInKind ? 'In-Kind' : d.mode, kind: d.kind, itemDescription: d.item_description,
       amount:d.amount, amountFmt:amountDisplay, amountSigned:signedDisplay, color:'#16A34A',
       date:d.date, dateFmt:fmtDate(d.date), ts:d.created_at || d.date,
-      flatLabel: f?f.label:d.flat_id, donorName:d.name, note:d.note||'', collectedByName:d.collected_by_name||'',
+      flatLabel, donorName:d.name, note:d.note||'', collectedByName:d.collected_by_name||'',
     };
   });
   const expenseTx = expenses.map(e=>({
@@ -691,7 +692,7 @@ function runGlobalSearch(qRaw){
   }).sort((a,b)=> (b.date>a.date?1:-1)).slice(0,6).map(d=>{
     const f = store.flats.find(x=>x.id===d.flat_id);
     return { type:'donation', id:d.id, year:yearOf(d.date),
-      title:(f?f.label:d.flat_id)+' — '+d.name, sub:'Donation · '+fmtDate(d.date),
+      title:(f?f.label:(d.flat_id||'Unknown / Vacated Tenant'))+' — '+d.name, sub:'Donation · '+fmtDate(d.date),
       amtFmt: d.amount>0 ? fmtINR(d.amount) : (d.item_description||'In-kind'), color:'#16A34A' };
   });
 
@@ -1213,7 +1214,8 @@ function openDonationModal(flatId){
   const f = flatId ? store.flats.find(x=>x.id===flatId) : null;
   const sel = document.getElementById('donFlatSelect');
   sel.innerHTML = '<option value="">Select flat</option>' + store.flats.map(fl=>
-    `<option value="${escapeHtml(fl.id)}">${escapeHtml(fl.label)} — ${escapeHtml(fl.owner||'Unassigned')}</option>`).join('');
+    `<option value="${escapeHtml(fl.id)}">${escapeHtml(fl.label)} — ${escapeHtml(fl.owner||'Unassigned')}</option>`).join('')
+    + '<option value="__unknown__">🕵️ Unknown / Vacated Tenant (no flat)</option>';
   sel.value = flatId || '';
   document.getElementById('donName').value = f ? (f.owner||'') : '';
   document.getElementById('donAmount').value = '';
@@ -1257,12 +1259,14 @@ document.getElementById('expModeRow').addEventListener('click', (e)=>{
 });
 document.getElementById('saveDonationBtn').addEventListener('click', async ()=>{
   if(!perms.canDonations){ showToast('You do not have permission to add donations'); return; }
-  const flatId = document.getElementById('donFlatSelect').value;
+  const rawFlatId = document.getElementById('donFlatSelect').value;
+  const flatId = rawFlatId === '__unknown__' ? null : rawFlatId;
   const name = document.getElementById('donName').value.trim();
   const kind = document.querySelector('#donKindRow .mode-btn.active')?.dataset.kind || 'cash';
   const date = document.getElementById('donDate').value || todayISO();
   const note = document.getElementById('donNote').value.trim();
-  if(!flatId){ showToast('Please select a flat'); return; }
+  if(!rawFlatId){ showToast('Please select a flat'); return; }
+  if(!flatId && !name){ showToast('Please enter a name or note for this unknown donor'); return; }
 
   let collectedBy = profile.id, collectedByName = displayName(profile);
   if(perms.isAdmin){
@@ -1288,7 +1292,7 @@ document.getElementById('saveDonationBtn').addEventListener('click', async ()=>{
   const { data: inserted, error } = await sb.from('ganesh_donations').insert(payload).select();
   btn.disabled = false;
   if(error){ showToast('Error: '+error.message); return; }
-  await logActivity('Added donation', (name||'Resident')+' ('+flatId+') — '+(kind==='cash'?fmtINR(payload.amount):payload.item_description));
+  await logActivity('Added donation', (name||'Resident')+' ('+(flatId||'Unknown/Vacated')+') — '+(kind==='cash'?fmtINR(payload.amount):payload.item_description));
 
   // If this donation was entered from "Mark Received" on a pledge, close the loop:
   // mark that pledge as received and link it to the new donation row.
@@ -1776,9 +1780,10 @@ function renderBulkImportPreview(){
       : r.source==='pledge' ? '<span class="bi-row-type pledge">Pledge</span>'
       : '<span class="bi-row-type donation">Donation</span>';
     const title = r.source==='expense' ? (r.category+' — '+r.description) : (escapeHtml(r.flatLabel||'No flat')+' — '+escapeHtml(r.name));
+    const flatSub = r.flatCode ? ('Flat '+escapeHtml(r.flatCode)) : (r.matched ? 'No flat on record' : 'Flat '+escapeHtml('?'));
     const sub = r.source==='expense' ? fmtDate(r.date)
-      : r.source==='pledge' ? ('Flat '+escapeHtml(r.flatCode||'?')+' · promised '+fmtDate(r.date)+(r.matched?'':' — pick a flat below'))
-      : ('Flat '+escapeHtml(r.flatCode||'?')+' · '+fmtDate(r.date)+(r.matched?'':' — pick a flat below'));
+      : r.source==='pledge' ? (flatSub+' · promised '+fmtDate(r.date)+(r.matched?'':' — pick a flat below'))
+      : (flatSub+' · '+fmtDate(r.date)+(r.matched?'':' — pick a flat below'));
     const amtText = r.source==='expense' ? fmtINR(r.amount)
       : r.source==='pledge' ? fmtINR(r.amount)+' (pledged)'
       : (r.kind==='cash' ? fmtINR(r.amount) : '🎁 '+escapeHtml(r.itemDescription));
@@ -1790,6 +1795,7 @@ function renderBulkImportPreview(){
       ? `<select class="bi-flat-picker" data-idx="${i}">
           <option value="">Assign a flat…</option>
           ${store.flats.map(fl=>`<option value="${escapeHtml(fl.id)}">${escapeHtml(fl.label)}${fl.owner?' — '+escapeHtml(fl.owner):''}</option>`).join('')}
+          ${r.source==='donation' ? '<option value="__unknown__">🕵️ Unknown / Vacated Tenant (no flat)</option>' : ''}
         </select>`
       : '';
     // Cross-references the donor name against donations already imported
@@ -1829,8 +1835,21 @@ function renderBulkImportPreview(){
 
 function applyFlatToBulkImportRow(idx, flatId){
   if(!flatId) return;
-  const f = store.flats.find(x=>x.id===flatId);
   const r = bulkImportRows[idx];
+  if(flatId==='__unknown__'){
+    // No flat could be identified — a long-vacated tenant or an unrecognized
+    // name — record the donation with no flat rather than blocking it.
+    r.flatId = null;
+    r.flatCode = null;
+    r.flatLabel = 'Unknown / Vacated Tenant';
+    if(!r.name) r.name = 'Unknown Donor';
+    r.matched = true;
+    r.isDuplicate = false;
+    r.included = true;
+    renderBulkImportPreview();
+    return;
+  }
+  const f = store.flats.find(x=>x.id===flatId);
   r.flatId = flatId;
   r.flatCode = flatId.replace(/^A/,'');
   r.flatLabel = f ? f.label : flatId;
@@ -2671,7 +2690,7 @@ function buildDonationReceiptHTML(id){
     : fmtINR(d.amount);
   const rows = [
     ['Receipt No.', d.id.slice(0,8).toUpperCase()],
-    ['Flat', f?f.label:d.flat_id],
+    ['Flat', f?f.label:(d.flat_id||'Unknown / Vacated Tenant')],
     ['Received From', d.name],
     ['Date', fmtDate(d.date)],
     ['Mode', isInKind ? 'In-Kind' : d.mode],
@@ -2704,7 +2723,7 @@ function buildDonationReceiptText(id){
   const lines = [
     `🙏 ${store.settings.committee_name || 'Ganesh Pooja Committee'} — Donation Receipt`,
     ``,
-    `Flat: ${f?f.label:d.flat_id}`,
+    `Flat: ${f?f.label:(d.flat_id||'Unknown / Vacated Tenant')}`,
     `Received From: ${d.name}`,
     `Amount: ${amountLine}`,
     `Date: ${fmtDate(d.date)}`,
