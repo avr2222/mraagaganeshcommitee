@@ -1468,10 +1468,20 @@ function parseFlatAndNameFromNotes(notesRaw){
   // Cash In column may still show the promised amount.
   const isPledge = /yet\s*to\s*give/i.test(text);
   text = text.replace(/-?\s*yet\s*to\s*give/gi,'').trim();
-  const flatMatch = text.match(/\b(\d{1,3})\b/);
+  // Plain "102" or "104-Someone" have the flat number as its own token, caught by
+  // the word-boundary regex below. But "A010-Rohan" style notes have a letter
+  // glued directly onto the digits (no boundary between "A" and "0"), so that
+  // regex finds nothing there — fall back to a pattern that also eats 1-2
+  // leading letters glued onto the number.
+  let flatMatch = text.match(/\b(\d{1,3})\b/);
+  let matchedToken = flatMatch ? flatMatch[0] : null;
+  if(!flatMatch){
+    const prefixed = text.match(/\b[A-Za-z]{1,2}(\d{2,3})\b/);
+    if(prefixed){ flatMatch = prefixed; matchedToken = prefixed[0]; }
+  }
   if(!flatMatch) return null;
   const flatCode = flatMatch[1].padStart(3,'0');
-  let name = text.replace(flatMatch[0],'')
+  let name = text.replace(matchedToken,'')
     .replace(/\bflat\b[-\s]*/gi,'')
     .replace(/^[-\s]+|[-\s]+$/g,'')
     .replace(/[-\s]+/g,' ')
@@ -1596,19 +1606,22 @@ function goToBulkImportPreview(){
   document.getElementById('backBulkImportBtn').classList.remove('hidden');
 }
 
+function rowIsDuplicate(r){
+  if(r.source==='donation' && r.flatId){
+    return store.donations.some(d=> d.flat_id===r.flatId && (d.name||'').toLowerCase()===(r.name||'').toLowerCase()
+      && d.date===r.date && Number(d.amount)===Number(r.amount));
+  } else if(r.source==='pledge' && r.flatId){
+    return store.pledges.some(p=> p.flat_id===r.flatId && (p.name||'').toLowerCase()===(r.name||'').toLowerCase()
+      && p.pledged_date===r.date && Number(p.amount)===Number(r.amount));
+  } else if(r.source==='expense'){
+    return store.expenses.some(e=> (e.description||'').toLowerCase()===(r.description||'').toLowerCase()
+      && e.date===r.date && Number(e.amount)===Number(r.amount));
+  }
+  return false;
+}
 function markDuplicates(rows){
   return rows.map(r=>{
-    let isDuplicate = false;
-    if(r.source==='donation' && r.flatId){
-      isDuplicate = store.donations.some(d=> d.flat_id===r.flatId && (d.name||'').toLowerCase()===(r.name||'').toLowerCase()
-        && d.date===r.date && Number(d.amount)===Number(r.amount));
-    } else if(r.source==='pledge' && r.flatId){
-      isDuplicate = store.pledges.some(p=> p.flat_id===r.flatId && (p.name||'').toLowerCase()===(r.name||'').toLowerCase()
-        && p.pledged_date===r.date && Number(p.amount)===Number(r.amount));
-    } else if(r.source==='expense'){
-      isDuplicate = store.expenses.some(e=> (e.description||'').toLowerCase()===(r.description||'').toLowerCase()
-        && e.date===r.date && Number(e.amount)===Number(r.amount));
-    }
+    const isDuplicate = rowIsDuplicate(r);
     return Object.assign({}, r, { isDuplicate, included: !isDuplicate });
   });
 }
@@ -1695,32 +1708,43 @@ document.getElementById('backBulkImportBtn').addEventListener('click', ()=>{
 function renderBulkImportPreview(){
   const listEl = document.getElementById('bulkImportPreviewList');
   listEl.innerHTML = bulkImportRows.map((r,i)=>{
-    const flag = !r.matched ? '<span class="bi-flag unmatched">NO SUCH FLAT</span>'
+    const flag = !r.matched ? '<span class="bi-flag unmatched">NO FLAT FOUND</span>'
       : r.isDuplicate ? '<span class="bi-flag dupe">POSSIBLE DUPLICATE</span>' : '';
     const rowClass = !r.matched ? 'bi-unmatched' : r.isDuplicate ? 'bi-dupe' : '';
     const typeTag = r.source==='expense' ? '<span class="bi-row-type expense">Expense</span>'
       : r.source==='pledge' ? '<span class="bi-row-type pledge">Pledge</span>'
       : '<span class="bi-row-type donation">Donation</span>';
-    const title = r.source==='expense' ? (r.category+' — '+r.description) : (escapeHtml(r.flatLabel)+' — '+escapeHtml(r.name));
+    const title = r.source==='expense' ? (r.category+' — '+r.description) : (escapeHtml(r.flatLabel||'No flat')+' — '+escapeHtml(r.name));
     const sub = r.source==='expense' ? fmtDate(r.date)
-      : r.source==='pledge' ? ('Flat '+escapeHtml(r.flatCode||'?')+' · promised '+fmtDate(r.date)+(r.matched?'':' (not found in Flats list)'))
-      : ('Flat '+escapeHtml(r.flatCode||'?')+' · '+fmtDate(r.date)+(r.matched?'':' (not found in Flats list)'));
+      : r.source==='pledge' ? ('Flat '+escapeHtml(r.flatCode||'?')+' · promised '+fmtDate(r.date)+(r.matched?'':' — pick a flat below'))
+      : ('Flat '+escapeHtml(r.flatCode||'?')+' · '+fmtDate(r.date)+(r.matched?'':' — pick a flat below'));
     const amtText = r.source==='expense' ? fmtINR(r.amount)
       : r.source==='pledge' ? fmtINR(r.amount)+' (pledged)'
       : (r.kind==='cash' ? fmtINR(r.amount) : '🎁 '+escapeHtml(r.itemDescription));
+    // Rows where no flat number could be found in the source text (a name-only
+    // ledger entry, e.g. "Mallaiah" with no flat number written anywhere) can't
+    // be auto-matched — let the user pick the flat by hand instead of just
+    // blocking the row from import.
+    const flatPicker = (!r.matched && r.source!=='expense')
+      ? `<select class="bi-flat-picker" data-idx="${i}">
+          <option value="">Assign a flat…</option>
+          ${store.flats.map(fl=>`<option value="${escapeHtml(fl.id)}">${escapeHtml(fl.label)}${fl.owner?' — '+escapeHtml(fl.owner):''}</option>`).join('')}
+        </select>`
+      : '';
     return `
-      <label class="bi-row ${rowClass}">
-        <input type="checkbox" class="bi-check" data-idx="${i}" ${r.included && r.matched ? 'checked' : ''} ${r.matched ? '' : 'disabled'}>
-        <div class="bi-row-left">
+      <div class="bi-row ${rowClass}">
+        <input type="checkbox" class="bi-check" id="bi-check-${i}" data-idx="${i}" ${r.included && r.matched ? 'checked' : ''} ${r.matched ? '' : 'disabled'}>
+        <label for="bi-check-${i}" class="bi-row-left">
           ${typeTag}
           <div>
             <div class="bi-row-title">${title}</div>
             <div class="bi-row-sub">${sub}</div>
           </div>
-        </div>
+        </label>
+        ${flatPicker}
         ${flag}
         <div class="bi-row-amt">${amtText}</div>
-      </label>`;
+      </div>`;
   }).join('') || '<p class="empty-sub">No rows recognized.</p>';
 
   const includedCount = bulkImportRows.filter(r=>r.included && r.matched).length;
@@ -1734,6 +1758,23 @@ function renderBulkImportPreview(){
 }
 
 document.getElementById('bulkImportPreviewList').addEventListener('change', (e)=>{
+  const picker = e.target.closest('.bi-flat-picker');
+  if(picker){
+    const idx = Number(picker.dataset.idx);
+    const flatId = picker.value;
+    if(!flatId) return;
+    const f = store.flats.find(x=>x.id===flatId);
+    const r = bulkImportRows[idx];
+    r.flatId = flatId;
+    r.flatCode = flatId.replace(/^A/,'');
+    r.flatLabel = f ? f.label : flatId;
+    if(!r.name) r.name = (f && f.owner) || 'Resident';
+    r.matched = true;
+    r.isDuplicate = rowIsDuplicate(r);
+    r.included = !r.isDuplicate;
+    renderBulkImportPreview();
+    return;
+  }
   const check = e.target.closest('.bi-check'); if(!check) return;
   bulkImportRows[Number(check.dataset.idx)].included = check.checked;
   renderBulkImportPreview();
