@@ -142,6 +142,15 @@
   <!-- Main content -->
   <main class="content">
 
+    <div class="global-search-wrap">
+      <div class="global-search-box">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="text" id="globalSearchInput" placeholder="Search donations, expenses, pledges, flats…" autocomplete="off">
+        <button class="global-search-clear hidden" id="globalSearchClear" aria-label="Clear search">✕</button>
+      </div>
+      <div class="global-search-results hidden" id="globalSearchResults"></div>
+    </div>
+
     <!-- DASHBOARD -->
     <section class="screen" id="screen-dashboard">
       <div class="screen-head">
@@ -153,8 +162,20 @@
           </div>
         </div>
         <div class="head-actions">
+          <button class="btn btn-ghost" id="printAnnualReportBtn">🖨 Print Annual Report</button>
           <button class="btn btn-orange" id="addDonationBtnDash">+ Add Donation</button>
           <button class="btn btn-red" id="addExpenseBtnDash">+ Add Expense</button>
+        </div>
+      </div>
+
+      <div class="panel hidden" id="pledgesPanel">
+        <div class="panel-row">
+          <div class="panel-title">Pledged, Not Yet Received</div>
+          <button class="btn btn-ghost" id="viewPledgesBtn">View Pledges</button>
+        </div>
+        <div class="pledge-summary">
+          <div class="pledge-summary-amt" id="pledgeSummaryAmt">₹0</div>
+          <div class="pledge-summary-sub" id="pledgeSummarySub">0 pledges awaiting follow-up</div>
         </div>
       </div>
 
@@ -217,9 +238,13 @@
           </div>
         </div>
 
-        <div class="panel hidden" id="yearComparePanel">
-          <div class="panel-title" style="margin-bottom:16px" id="yearCompareTitle">This Year vs Last Year</div>
-          <div class="compare-grid" id="yearCompareGrid"></div>
+        <div class="panel" id="yearComparePanel">
+          <div class="panel-row">
+            <div class="panel-title" id="yearCompareTitle">This Year vs Last Year</div>
+            <button class="btn btn-ghost" id="openCompareYearsBtn">🔍 Compare Any Two Years</button>
+          </div>
+          <div class="compare-grid hidden" id="yearCompareGrid"></div>
+          <p class="empty-sub hidden" id="yearCompareEmpty">No data for last year yet — nothing to auto-compare. Use "Compare Any Two Years" to pick specific years once more than one year has data.</p>
         </div>
 
         <div class="panel">
@@ -303,6 +328,15 @@
           <button class="btn btn-ghost" id="exportDonationsBtn">⬇ Export Report</button>
           <button class="btn btn-orange" id="addDonationBtnList">+ Add Donation</button>
         </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-row">
+          <div class="panel-title">Pledges (Promised, Not Yet Received)</div>
+          <button class="btn btn-ghost" id="addPledgeBtn">+ Add Pledge</button>
+        </div>
+        <p class="empty-sub" id="pledgesEmpty">No pending pledges. Use "+ Add Pledge" to note down a promised donation someone will send later.</p>
+        <div id="pledgesList"></div>
       </div>
 
       <div class="panel">
@@ -503,6 +537,49 @@
       <div class="modal-actions">
         <button class="btn btn-flat" id="cancelDonationBtn">Cancel</button>
         <button class="btn btn-orange" id="saveDonationBtn">Save Donation</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pledge modal -->
+  <div class="modal-overlay hidden" id="pledgeModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title">Add Pledge</div>
+        <button class="modal-close" id="closePledgeModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint" style="margin:-4px 0 4px">Note down a promised donation that hasn't been received yet — it won't be counted in Total Collected until you mark it received.</p>
+        <div class="field">
+          <label>FLAT NUMBER</label>
+          <select id="pledgeFlatSelect">
+            <option value="">Select flat</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>OWNER / TENANT NAME</label>
+          <input type="text" id="pledgeName" placeholder="Name">
+        </div>
+        <div class="field">
+          <label>PROMISED AMOUNT</label>
+          <div class="amount-input">
+            <span>₹</span>
+            <input type="number" id="pledgeAmount" placeholder="0" min="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>DATE PLEDGED</label>
+          <input type="date" id="pledgeDate">
+          <div class="hint date-confirm" id="pledgeDateHint"></div>
+        </div>
+        <div class="field">
+          <label>NOTE (OPTIONAL)</label>
+          <textarea id="pledgeNote" rows="2" placeholder="e.g. Will send by UPI next week"></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="cancelPledgeBtn">Cancel</button>
+        <button class="btn btn-orange" id="savePledgeBtn">Save Pledge</button>
       </div>
     </div>
   </div>
@@ -714,7 +791,8 @@
         <button class="modal-close" id="closeBudgetModal" aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
-        <p class="subtle" style="margin:-4px 0 14px">Set a planned ₹ amount or a % of this year's total collections per category. Leave a row blank to remove its budget.</p>
+        <p class="subtle" style="margin:-4px 0 10px">Set a planned ₹ amount or a % of this year's total collections per category. Leave a row blank to remove its budget.</p>
+        <button class="btn btn-ghost" id="copyPrevBudgetBtn" type="button" style="margin-bottom:14px;width:100%">📋 Copy Amounts From Last Year</button>
         <div id="budgetRows" class="budget-rows"></div>
         <div class="field" style="margin-top:14px">
           <label>ADD ANOTHER CATEGORY</label>
@@ -727,6 +805,43 @@
       <div class="modal-actions">
         <button class="btn btn-flat" id="cancelBudgetBtn">Cancel</button>
         <button class="btn btn-orange" id="saveBudgetBtn">Save Budgets</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compare years modal -->
+  <div class="modal-overlay hidden" id="compareYearsModal">
+    <div class="modal" style="max-width:560px">
+      <div class="modal-head">
+        <div class="modal-title">Compare Years</div>
+        <button class="modal-close" id="closeCompareYearsModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="compare-years-picker">
+          <div class="field">
+            <label>YEAR A</label>
+            <select id="compareYearA"></select>
+          </div>
+          <div class="compare-years-vs">vs</div>
+          <div class="field">
+            <label>YEAR B</label>
+            <select id="compareYearB"></select>
+          </div>
+        </div>
+
+        <p class="empty-sub hidden" id="compareYearsEmpty">Not enough data yet — need at least one donation or expense in each selected year.</p>
+
+        <div id="compareYearsBody" class="hidden">
+          <div class="panel-title" style="margin:18px 0 10px">Overview</div>
+          <div class="compare-grid" id="compareYearsSummary"></div>
+
+          <div class="panel-title" style="margin:20px 0 6px">Expenses by Category — What Changed</div>
+          <p class="hint" style="margin:-2px 0 10px">Sorted by biggest change first. Red = spent more, green = spent less.</p>
+          <div class="compare-grid compare-cat-list" id="compareYearsCategories"></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="closeCompareYearsBtn2">Close</button>
       </div>
     </div>
   </div>

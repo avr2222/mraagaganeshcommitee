@@ -271,6 +271,10 @@ button{cursor:pointer}
 .compare-delta.up{background:#DCFCE7;color:var(--green)}
 .compare-delta.down{background:#FEE2E2;color:var(--red)}
 .compare-delta.flat{background:var(--slate-100);color:var(--slate-600)}
+.compare-years-picker{display:flex;align-items:end;gap:12px}
+.compare-years-picker .field{flex:1;margin:0}
+.compare-years-vs{padding-bottom:11px;font-size:12px;font-weight:800;color:var(--slate-400)}
+.compare-cat-list{max-height:320px;overflow-y:auto;padding-right:2px}
 .user-row{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--slate-200);border-radius:10px;padding:8px 10px}
 .user-row-email{font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .user-row select{border:1px solid var(--slate-200);border-radius:8px;padding:5px 8px;font-size:12px;font-weight:600;background:#fff;flex-shrink:0}
@@ -324,6 +328,37 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 @media (min-width:900px){
   .cards-list{display:none}
 }
+
+/* Global search */
+.global-search-wrap{position:relative;margin-bottom:18px}
+.global-search-box{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--slate-200);border-radius:12px;padding:10px 12px;color:var(--slate-400)}
+.global-search-box input{flex:1;border:none;outline:none;font-size:13.5px;color:var(--ink);background:transparent}
+.global-search-box input::placeholder{color:var(--slate-400)}
+.global-search-clear{border:none;background:var(--slate-100);color:var(--slate-400);width:20px;height:20px;border-radius:50%;font-size:11px;cursor:pointer;flex-shrink:0}
+.global-search-results{position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--slate-200);
+  border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.12);max-height:420px;overflow-y:auto;z-index:40;padding:6px}
+.gsr-group-label{font-size:10.5px;font-weight:800;letter-spacing:.04em;color:var(--slate-400);padding:8px 10px 4px}
+.gsr-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer}
+.gsr-row:hover{background:var(--slate-50)}
+.gsr-row-left{min-width:0}
+.gsr-row-title{font-size:13px;font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gsr-row-sub{font-size:11.5px;color:var(--slate-400);font-weight:600;margin-top:1px}
+.gsr-row-amt{font-weight:800;font-size:12.5px;white-space:nowrap;flex-shrink:0}
+.gsr-empty{padding:16px;text-align:center;font-size:12.5px;color:var(--slate-400)}
+
+/* Pledges */
+.pledge-summary{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.pledge-summary-amt{font-family:'Manrope',sans-serif;font-size:24px;font-weight:800;color:var(--amber)}
+.pledge-summary-sub{font-size:12.5px;color:var(--slate-400);font-weight:600}
+.pledge-row{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.pledge-row-left{min-width:0}
+.pledge-row-title{font-size:13px;font-weight:700;color:var(--ink)}
+.pledge-row-sub{font-size:11.5px;color:var(--slate-400);font-weight:600;margin-top:2px}
+.pledge-row-amt{font-weight:800;color:var(--amber);white-space:nowrap}
+.pledge-row-actions{display:flex;gap:6px;flex-shrink:0}
+.pledge-row-actions button{border:none;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer}
+.pledge-mark-received{background:var(--green);color:#fff}
+.pledge-delete{background:var(--slate-100);color:var(--slate-400)}
 
 /* Seva days */
 .seva-days-list{display:flex;flex-direction:column;gap:16px}

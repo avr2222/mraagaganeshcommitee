@@ -53,7 +53,7 @@ function wireDateConfirm(inputId, hintId){
   update();
 }
 [['donDate','donDateHint'],['expDate','expDateHint'],['transferDate','transferDateHint'],
- ['sevaDayDate','sevaDayDateHint'],['sevaDayDateTo','sevaDayDateToHint']]
+ ['sevaDayDate','sevaDayDateHint'],['sevaDayDateTo','sevaDayDateToHint'],['pledgeDate','pledgeDateHint']]
   .forEach(([inputId,hintId]) => wireDateConfirm(inputId,hintId));
 
 /* Simple dependency-free SVG donut chart. segments: [{value,color}] */
@@ -93,7 +93,7 @@ async function logActivity(action, details){
 let session = null;
 let profile = null;         // { id, email, full_name, role }
 let perms = { isAdmin:false, canDonations:false, canExpenses:false, canEditFlats:false };
-const store = { flats:[], donations:[], expenses:[], settings:{committee_name:'Ganesh Pooja Committee'}, profiles:[], sevaDays:[], sevaSignups:[], fundTransfers:[], budgets:[], openingBalances:[], activityLog:[] };
+const store = { flats:[], donations:[], pledges:[], expenses:[], settings:{committee_name:'Ganesh Pooja Committee'}, profiles:[], sevaDays:[], sevaSignups:[], fundTransfers:[], budgets:[], openingBalances:[], activityLog:[] };
 const BUDGET_COLORS = ['#F97316','#2563EB','#16A34A','#DC2626','#9333EA','#0EA5E9','#CA8A04','#DB2777','#0D9488','#64748B','#EA580C','#4F46E5'];
 
 /* ---- transient UI state (not persisted) ---- */
@@ -105,6 +105,7 @@ const ui = {
   txnFilter:'all',
   editingFlatId:null,
   authMode:'signin',
+  pledgeBeingFulfilled:null,
 };
 
 /* ============================================================
@@ -274,9 +275,10 @@ sb.auth.onAuthStateChange((event, s)=>{
    DATA FETCHING
    ============================================================ */
 async function fetchAllData(){
-  const [flatsRes, donationsRes, expensesRes, settingsRes, sevaDaysRes, sevaSignupsRes, transfersRes, budgetsRes, openingRes] = await Promise.all([
+  const [flatsRes, donationsRes, pledgesRes, expensesRes, settingsRes, sevaDaysRes, sevaSignupsRes, transfersRes, budgetsRes, openingRes] = await Promise.all([
     sb.from('ganesh_flats').select('*').order('id'),
     sb.from('ganesh_donations').select('*').order('date',{ascending:false}),
+    sb.from('ganesh_pledges').select('*').order('pledged_date',{ascending:false}),
     sb.from('ganesh_expenses').select('*').order('date',{ascending:false}),
     sb.from('ganesh_settings').select('*').eq('id',1).maybeSingle(),
     sb.from('ganesh_prasadam_days').select('*').order('seva_date'),
@@ -291,6 +293,7 @@ async function fetchAllData(){
 
   store.flats = flatsRes.data || [];
   store.donations = (donationsRes.data||[]).map(d=>Object.assign({}, d, { amount:Number(d.amount) }));
+  store.pledges = (pledgesRes.data||[]).map(p=>Object.assign({}, p, { amount:Number(p.amount) }));
   store.expenses = (expensesRes.data||[]).map(e=>Object.assign({}, e, { amount:Number(e.amount) }));
   store.settings = settingsRes.data || { committee_name:'Ganesh Pooja Committee' };
   store.sevaDays = sevaDaysRes.data || [];
@@ -505,6 +508,15 @@ function computeView(){
     };
   }
 
+  // ---- Pledges: promised but not yet received (for this year, still pending) ----
+  const pledgeRows = store.pledges.filter(p => p.status==='pending' && yearOf(p.pledged_date)===ui.year)
+    .sort((a,b)=> (a.pledged_date<b.pledged_date?1:-1))
+    .map(p=>{
+      const f = store.flats.find(x=>x.id===p.flat_id);
+      return Object.assign({}, p, { flatLabel: f?f.label:p.flat_id, amountFmt: fmtINR(p.amount), pledgedDateFmt: fmtDate(p.pledged_date) });
+    });
+  const totalPledged = pledgeRows.reduce((s,p)=>s+p.amount,0);
+
   // ---- Prasadam seva: how many morning/evening slots still need a volunteer ----
   const sevaTotalSlots = store.sevaDays.length * SEVA_SESSIONS.length;
   let sevaOpenSlots = 0;
@@ -525,6 +537,7 @@ function computeView(){
     budgetBreakdown, budgetDonutSegments, totalBudgetAllocated, overallBudgetPctUsed,
     custodyBreakdown, recentTransfers, yearComparison,
     sevaTotalSlots, sevaOpenSlots, sevaFilledSlots, sevaFilledPct,
+    pledgeRows, totalPledged, totalPledgedFmt: fmtINR(totalPledged),
     filteredFlats, hasData: donations.length>0 || expenses.length>0,
   };
 }
@@ -632,10 +645,10 @@ function deltaTag(delta, goodDirection){
   return `<span class="compare-delta ${cls}">${arrow} ${Math.abs(delta)}%</span>`;
 }
 function renderYearComparison(v){
-  const panel = document.getElementById('yearComparePanel');
   const c = v.yearComparison;
-  panel.classList.toggle('hidden', !c);
-  if(!c) return;
+  document.getElementById('yearCompareEmpty').classList.toggle('hidden', !!c);
+  document.getElementById('yearCompareGrid').classList.toggle('hidden', !c);
+  if(!c){ document.getElementById('yearCompareTitle').textContent = 'This Year vs Last Year'; return; }
   document.getElementById('yearCompareTitle').textContent = ui.year + ' vs ' + c.prevYear;
   document.getElementById('yearCompareGrid').innerHTML = `
     <div class="compare-row">
@@ -659,6 +672,206 @@ function renderYearComparison(v){
       ${deltaTag(c.contributedPctDelta,'up')}
     </div>
   `;
+}
+
+/* ============================================================
+   GLOBAL SEARCH — across donations, expenses, pledges, flats,
+   spanning every year (not just the one currently selected).
+   ============================================================ */
+function runGlobalSearch(qRaw){
+  const q = qRaw.trim().toLowerCase();
+  if(q.length < 2) return null;
+
+  const donationHits = store.donations.filter(d=>{
+    const f = store.flats.find(x=>x.id===d.flat_id);
+    return (d.name||'').toLowerCase().includes(q) || (d.flat_id||'').toLowerCase().includes(q)
+      || (f && (f.label||'').toLowerCase().includes(q)) || (d.note||'').toLowerCase().includes(q)
+      || (d.item_description||'').toLowerCase().includes(q);
+  }).sort((a,b)=> (b.date>a.date?1:-1)).slice(0,6).map(d=>{
+    const f = store.flats.find(x=>x.id===d.flat_id);
+    return { type:'donation', id:d.id, year:yearOf(d.date),
+      title:(f?f.label:d.flat_id)+' — '+d.name, sub:'Donation · '+fmtDate(d.date),
+      amtFmt: d.amount>0 ? fmtINR(d.amount) : (d.item_description||'In-kind'), color:'#16A34A' };
+  });
+
+  const expenseHits = store.expenses.filter(e=>{
+    return (e.category||'').toLowerCase().includes(q) || (e.description||'').toLowerCase().includes(q) || (e.note||'').toLowerCase().includes(q);
+  }).sort((a,b)=> (b.date>a.date?1:-1)).slice(0,6).map(e=>({
+    type:'expense', id:e.id, year:yearOf(e.date),
+    title:e.category+' — '+e.description, sub:'Expense · '+fmtDate(e.date),
+    amtFmt: fmtINR(e.amount), color:'#DC2626',
+  }));
+
+  const pledgeHits = store.pledges.filter(p=>{
+    const f = store.flats.find(x=>x.id===p.flat_id);
+    return (p.name||'').toLowerCase().includes(q) || (p.flat_id||'').toLowerCase().includes(q)
+      || (f && (f.label||'').toLowerCase().includes(q)) || (p.note||'').toLowerCase().includes(q);
+  }).sort((a,b)=> (b.pledged_date>a.pledged_date?1:-1)).slice(0,6).map(p=>{
+    const f = store.flats.find(x=>x.id===p.flat_id);
+    return { type:'pledge', id:p.id, year:yearOf(p.pledged_date),
+      title:(f?f.label:p.flat_id)+' — '+p.name, sub:'Pledge ('+p.status+') · '+fmtDate(p.pledged_date),
+      amtFmt: fmtINR(p.amount), color:'#D97706' };
+  });
+
+  const flatHits = store.flats.filter(f=>{
+    return (f.id||'').toLowerCase().includes(q) || (f.label||'').toLowerCase().includes(q)
+      || (f.owner||'').toLowerCase().includes(q) || (f.tenant||'').toLowerCase().includes(q);
+  }).slice(0,6).map(f=>({
+    type:'flat', id:f.id, title:f.label, sub:[f.owner,f.tenant].filter(Boolean).join(' / ') || 'Unassigned', amtFmt:'', color:'#2563EB',
+  }));
+
+  return { donationHits, expenseHits, pledgeHits, flatHits,
+    total: donationHits.length + expenseHits.length + pledgeHits.length + flatHits.length };
+}
+function renderGlobalSearchResults(results){
+  const box = document.getElementById('globalSearchResults');
+  if(!results){ box.classList.add('hidden'); box.innerHTML=''; return; }
+  if(results.total===0){
+    box.innerHTML = '<div class="gsr-empty">No matches. Try a flat number, name, or category.</div>';
+    box.classList.remove('hidden');
+    return;
+  }
+  const group = (label, rows) => !rows.length ? '' : `
+    <div class="gsr-group-label">${label.toUpperCase()}</div>
+    ${rows.map(r=>`
+      <div class="gsr-row" data-type="${r.type}" data-id="${r.id}" data-year="${r.year||''}">
+        <div class="gsr-row-left">
+          <div class="gsr-row-title">${escapeHtml(r.title)}</div>
+          <div class="gsr-row-sub">${escapeHtml(r.sub)}</div>
+        </div>
+        <div class="gsr-row-amt" style="color:${r.color}">${escapeHtml(r.amtFmt)}</div>
+      </div>`).join('')}`;
+  box.innerHTML = group('Donations', results.donationHits) + group('Expenses', results.expenseHits)
+    + group('Pledges', results.pledgeHits) + group('Flats', results.flatHits);
+  box.classList.remove('hidden');
+}
+let globalSearchTimer;
+const globalSearchInput = document.getElementById('globalSearchInput');
+globalSearchInput.addEventListener('input', ()=>{
+  const val = globalSearchInput.value;
+  document.getElementById('globalSearchClear').classList.toggle('hidden', !val);
+  clearTimeout(globalSearchTimer);
+  globalSearchTimer = setTimeout(()=> renderGlobalSearchResults(runGlobalSearch(val)), 150);
+});
+globalSearchInput.addEventListener('focus', ()=>{
+  if(globalSearchInput.value.trim().length>=2) renderGlobalSearchResults(runGlobalSearch(globalSearchInput.value));
+});
+document.getElementById('globalSearchClear').addEventListener('click', ()=>{
+  globalSearchInput.value = '';
+  document.getElementById('globalSearchClear').classList.add('hidden');
+  renderGlobalSearchResults(null);
+  globalSearchInput.focus();
+});
+document.getElementById('globalSearchResults').addEventListener('click', (e)=>{
+  const row = e.target.closest('.gsr-row'); if(!row) return;
+  const type = row.dataset.type, year = row.dataset.year;
+  if(year) ui.year = year;
+  if(type==='donation') goScreen('donations');
+  else if(type==='expense') goScreen('expenses');
+  else if(type==='pledge') goScreen('donations');
+  else if(type==='flat'){ ui.flatsFilter='all'; ui.flatsSearch = row.querySelector('.gsr-row-title').textContent; goScreen('flats'); }
+  renderGlobalSearchResults(null);
+  globalSearchInput.value = '';
+  document.getElementById('globalSearchClear').classList.add('hidden');
+});
+document.addEventListener('click', (e)=>{
+  const wrap = document.querySelector('.global-search-wrap');
+  if(wrap && !wrap.contains(e.target)) renderGlobalSearchResults(null);
+});
+
+/* ============================================================
+   COMPARE ANY TWO YEARS — full expense category breakdown,
+   not just the automatic "this year vs last year" summary above.
+   ============================================================ */
+function pctDeltaGlobal(curr, prev){
+  if(!prev) return curr>0 ? null : 0;
+  return Math.round(((curr-prev)/Math.abs(prev))*100);
+}
+function allDataYears(){
+  const years = new Set([ui.year]);
+  store.donations.forEach(d=>years.add(yearOf(d.date)));
+  store.expenses.forEach(e=>years.add(yearOf(e.date)));
+  store.pledges.forEach(p=>years.add(yearOf(p.pledged_date)));
+  return Array.from(years).filter(Boolean).sort((a,b)=>b.localeCompare(a));
+}
+function yearSummary(year){
+  const b = balanceOf(year, store.donations, store.expenses);
+  const contributedIds = new Set(store.donations.filter(d=>yearOf(d.date)===year).map(d=>d.flat_id));
+  const totalFlatsNow = store.flats.length;
+  const contributedPct = totalFlatsNow ? Math.round(store.flats.filter(f=>contributedIds.has(f.id)).length/totalFlatsNow*100) : 0;
+  return { collected:b.collected, expenses:b.spent, balance:b.balance, contributedPct };
+}
+function categoryTotalsForYear(year){
+  const totals = {};
+  store.expenses.filter(e=>yearOf(e.date)===year).forEach(e=>{ totals[e.category] = (totals[e.category]||0) + e.amount; });
+  return totals;
+}
+function computeYearsComparison(yearA, yearB){
+  const sa = yearSummary(yearA), sb = yearSummary(yearB);
+  const hasData = (sa.collected>0 || sa.expenses>0) && (sb.collected>0 || sb.expenses>0);
+  const summaryRows = [
+    { name:'Collected', aFmt:fmtINR(sa.collected), bFmt:fmtINR(sb.collected), delta:pctDeltaGlobal(sb.collected,sa.collected), good:'up' },
+    { name:'Expenses', aFmt:fmtINR(sa.expenses), bFmt:fmtINR(sb.expenses), delta:pctDeltaGlobal(sb.expenses,sa.expenses), good:'down' },
+    { name:'Balance', aFmt:fmtINR(sa.balance), bFmt:fmtINR(sb.balance), delta:pctDeltaGlobal(sb.balance,sa.balance), good:'up' },
+    { name:'Flats Contributed', aFmt:sa.contributedPct+'%', bFmt:sb.contributedPct+'%', delta:sb.contributedPct-sa.contributedPct, good:'up' },
+  ];
+
+  const catA = categoryTotalsForYear(yearA), catB = categoryTotalsForYear(yearB);
+  const allCats = Array.from(new Set([...Object.keys(catA), ...Object.keys(catB)]));
+  const categoryRows = allCats.map(cat=>{
+    const a = catA[cat]||0, b = catB[cat]||0;
+    return { category:cat, a, b, aFmt:fmtINR(a), bFmt:fmtINR(b), delta:pctDeltaGlobal(b,a), absChange:Math.abs(b-a) };
+  }).sort((x,y)=> y.absChange - x.absChange);
+
+  return { hasData, summaryRows, categoryRows };
+}
+
+const compareYearsModal = document.getElementById('compareYearsModal');
+function populateCompareYearSelects(){
+  const years = allDataYears();
+  const selA = document.getElementById('compareYearA');
+  const selB = document.getElementById('compareYearB');
+  const opts = years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  selA.innerHTML = opts;
+  selB.innerHTML = opts;
+  selB.value = ui.year;
+  selA.value = years.find(y=>y!==selB.value) || years[0];
+}
+function openCompareYearsModal(){
+  populateCompareYearSelects();
+  renderCompareYearsModal();
+  compareYearsModal.classList.remove('hidden');
+}
+function closeCompareYearsModal(){ compareYearsModal.classList.add('hidden'); }
+document.getElementById('openCompareYearsBtn').addEventListener('click', openCompareYearsModal);
+document.getElementById('closeCompareYearsModal').addEventListener('click', closeCompareYearsModal);
+document.getElementById('closeCompareYearsBtn2').addEventListener('click', closeCompareYearsModal);
+document.getElementById('compareYearA').addEventListener('change', renderCompareYearsModal);
+document.getElementById('compareYearB').addEventListener('change', renderCompareYearsModal);
+
+function renderCompareYearsModal(){
+  const yearA = document.getElementById('compareYearA').value;
+  const yearB = document.getElementById('compareYearB').value;
+  const c = computeYearsComparison(yearA, yearB);
+  document.getElementById('compareYearsEmpty').classList.toggle('hidden', c.hasData);
+  document.getElementById('compareYearsBody').classList.toggle('hidden', !c.hasData);
+  if(!c.hasData) return;
+
+  document.getElementById('compareYearsSummary').innerHTML = c.summaryRows.map(r=>`
+    <div class="compare-row">
+      <span class="name">${escapeHtml(r.name)}</span>
+      <span class="figures"><span class="curr">${r.bFmt}</span> vs ${r.aFmt}</span>
+      ${deltaTag(r.delta, r.good)}
+    </div>
+  `).join('');
+
+  document.getElementById('compareYearsCategories').innerHTML = c.categoryRows.map(r=>`
+    <div class="compare-row">
+      <span class="name">${escapeHtml(r.category)}</span>
+      <span class="figures"><span class="curr">${r.bFmt}</span> vs ${r.aFmt}</span>
+      ${deltaTag(r.delta, 'down')}
+    </div>
+  `).join('') || '<p class="empty-sub">No expenses recorded in either year.</p>';
 }
 
 const STATUS_LABEL = { ok:'ON TRACK', warn:'NEAR LIMIT', over:'OVER', unbudgeted:'NO BUDGET' };
@@ -735,6 +948,7 @@ function renderFlats(v){
 }
 
 function renderDonations(v){
+  renderPledges(v);
   document.getElementById('donationsTotalLabel').textContent = fmtINR(v.totalCollected);
   document.getElementById('collectedByBreakdown').innerHTML = v.collectedByBreakdown.map(c=>`
     <div>
@@ -751,6 +965,7 @@ function renderDonations(v){
       <div style="display:flex;align-items:center;gap:8px">
         <div class="item-card-amt" style="color:#16A34A">${d.amountFmt}</div>
         <button class="item-card-edit print-receipt" data-id="${d.id}" title="Print receipt">🖨</button>
+        <button class="item-card-edit share-receipt" data-id="${d.id}" title="Share receipt">🔗</button>
       </div>
     </div>
   `).join('') || '<p class="empty-sub">No donations recorded for '+ui.year+'.</p>';
@@ -762,7 +977,7 @@ function renderDonations(v){
       <td>${escapeHtml(d.mode)}</td>
       <td>${d.dateFmt}</td>
       <td class="num" style="color:#16A34A">${d.amountFmt}</td>
-      <td><button class="row-edit-btn print-receipt" data-id="${d.id}" title="Print receipt">🖨</button> ${delCell(d.id)}</td>
+      <td><button class="row-edit-btn print-receipt" data-id="${d.id}" title="Print receipt">🖨</button> <button class="row-edit-btn share-receipt" data-id="${d.id}" title="Share receipt">🔗</button> ${delCell(d.id)}</td>
     </tr>
   `).join('') || '<tr class="empty-row"><td colspan="5">No donations recorded for '+ui.year+'.</td></tr>';
 }
@@ -993,6 +1208,7 @@ document.getElementById('donKindRow').addEventListener('click', (e)=>{
 });
 function openDonationModal(flatId){
   if(!perms.canDonations){ showToast('You do not have permission to add donations'); return; }
+  ui.pledgeBeingFulfilled = null;
   const f = flatId ? store.flats.find(x=>x.id===flatId) : null;
   const sel = document.getElementById('donFlatSelect');
   sel.innerHTML = '<option value="">Select flat</option>' + store.flats.map(fl=>
@@ -1003,6 +1219,7 @@ function openDonationModal(flatId){
   document.getElementById('donItem').value = '';
   document.getElementById('donItemValue').value = '';
   document.getElementById('donDate').value = todayISO();
+  document.getElementById('donDate').dispatchEvent(new Event('change'));
   document.getElementById('donNote').value = '';
   setModeButtons('donModeRow', 'UPI');
   setDonationKind('cash');
@@ -1015,7 +1232,7 @@ function openDonationModal(flatId){
   }
   donationModal.classList.remove('hidden');
 }
-function closeDonationModal(){ donationModal.classList.add('hidden'); }
+function closeDonationModal(){ donationModal.classList.add('hidden'); ui.pledgeBeingFulfilled = null; }
 document.getElementById('addDonationBtnDash').addEventListener('click', ()=>openDonationModal(null));
 document.getElementById('addDonationBtnList').addEventListener('click', ()=>openDonationModal(null));
 document.getElementById('closeDonationModal').addEventListener('click', closeDonationModal);
@@ -1067,15 +1284,134 @@ document.getElementById('saveDonationBtn').addEventListener('click', async ()=>{
 
   const btn = document.getElementById('saveDonationBtn');
   btn.disabled = true;
-  const { error } = await sb.from('ganesh_donations').insert(payload);
+  const { data: inserted, error } = await sb.from('ganesh_donations').insert(payload).select();
   btn.disabled = false;
   if(error){ showToast('Error: '+error.message); return; }
   await logActivity('Added donation', (name||'Resident')+' ('+flatId+') — '+(kind==='cash'?fmtINR(payload.amount):payload.item_description));
+
+  // If this donation was entered from "Mark Received" on a pledge, close the loop:
+  // mark that pledge as received and link it to the new donation row.
+  if(ui.pledgeBeingFulfilled){
+    const newDonationId = inserted && inserted[0] ? inserted[0].id : null;
+    await sb.from('ganesh_pledges').update({ status:'received', fulfilled_donation_id: newDonationId }).eq('id', ui.pledgeBeingFulfilled);
+    await logActivity('Pledge received', (name||'Resident')+' ('+flatId+') — '+fmtINR(payload.amount));
+    ui.pledgeBeingFulfilled = null;
+  }
+
   await fetchAllData();
   closeDonationModal();
   renderAll();
   showToast(kind==='cash' ? 'Donation added successfully ✓' : 'In-kind contribution recorded ✓');
 });
+
+/* ============================================================
+   PLEDGES (promised, not yet received — noted for follow-up,
+   NOT counted in Total Collected until marked received)
+   ============================================================ */
+const pledgeModal = document.getElementById('pledgeModal');
+function openPledgeModal(){
+  if(!perms.canDonations){ showToast('You do not have permission to add pledges'); return; }
+  const sel = document.getElementById('pledgeFlatSelect');
+  sel.innerHTML = '<option value="">Select flat</option>' + store.flats.map(fl=>
+    `<option value="${escapeHtml(fl.id)}">${escapeHtml(fl.label)} — ${escapeHtml(fl.owner||'Unassigned')}</option>`).join('');
+  sel.value = '';
+  document.getElementById('pledgeName').value = '';
+  document.getElementById('pledgeAmount').value = '';
+  const dateInput = document.getElementById('pledgeDate');
+  dateInput.value = todayISO();
+  dateInput.dispatchEvent(new Event('change'));
+  document.getElementById('pledgeNote').value = '';
+  pledgeModal.classList.remove('hidden');
+}
+function closePledgeModal(){ pledgeModal.classList.add('hidden'); }
+document.getElementById('addPledgeBtn').addEventListener('click', openPledgeModal);
+document.getElementById('closePledgeModal').addEventListener('click', closePledgeModal);
+document.getElementById('cancelPledgeBtn').addEventListener('click', closePledgeModal);
+document.getElementById('pledgeFlatSelect').addEventListener('change', (e)=>{
+  const f = store.flats.find(x=>x.id===e.target.value);
+  if(f && !document.getElementById('pledgeName').value){ document.getElementById('pledgeName').value = f.owner||''; }
+});
+document.getElementById('savePledgeBtn').addEventListener('click', async ()=>{
+  if(!perms.canDonations){ showToast('You do not have permission to add pledges'); return; }
+  const flatId = document.getElementById('pledgeFlatSelect').value;
+  const name = document.getElementById('pledgeName').value.trim();
+  const amount = Number(document.getElementById('pledgeAmount').value);
+  const date = document.getElementById('pledgeDate').value || todayISO();
+  const note = document.getElementById('pledgeNote').value.trim();
+  if(!flatId){ showToast('Please select a flat'); return; }
+  if(!amount || amount<=0){ showToast('Please enter a valid promised amount'); return; }
+
+  const btn = document.getElementById('savePledgeBtn');
+  btn.disabled = true;
+  const { error } = await sb.from('ganesh_pledges').insert({
+    flat_id: flatId, name: name||'Resident', amount, pledged_date: date, note, status: 'pending', created_by: profile.id,
+  });
+  btn.disabled = false;
+  if(error){ showToast('Error: '+error.message); return; }
+  await logActivity('Added pledge', (name||'Resident')+' ('+flatId+') — '+fmtINR(amount)+' promised');
+  await fetchAllData();
+  closePledgeModal();
+  renderAll();
+  showToast('Pledge noted — follow up later ✓');
+});
+
+// "Mark Received" opens the regular donation modal, pre-filled from the
+// pledge, so the money actually gets recorded through the normal flow
+// (and counted in Total Collected). Saving that donation then marks this
+// pledge as received (see saveDonationBtn handler above).
+function markPledgeReceived(pledgeId){
+  const p = store.pledges.find(x=>x.id===pledgeId);
+  if(!p) return;
+  if(!perms.canDonations){ showToast('You do not have permission to record donations'); return; }
+  openDonationModal(p.flat_id);
+  document.getElementById('donName').value = p.name || '';
+  document.getElementById('donAmount').value = p.amount;
+  ui.pledgeBeingFulfilled = pledgeId;
+}
+async function deletePledge(pledgeId){
+  if(!perms.canDonations){ showToast('You do not have permission to remove pledges'); return; }
+  if(!confirm('Remove this pledge? This cannot be undone.')) return;
+  const { error } = await sb.from('ganesh_pledges').delete().eq('id', pledgeId);
+  if(error){ showToast('Error: '+error.message); return; }
+  await logActivity('Removed pledge', pledgeId);
+  await fetchAllData();
+  renderAll();
+  showToast('Pledge removed');
+}
+document.getElementById('pledgesList').addEventListener('click', (e)=>{
+  const mark = e.target.closest('.pledge-mark-received');
+  if(mark){ markPledgeReceived(mark.dataset.pledge); return; }
+  const del = e.target.closest('.pledge-delete');
+  if(del){ deletePledge(del.dataset.pledge); }
+});
+document.getElementById('viewPledgesBtn').addEventListener('click', ()=> goScreen('donations'));
+
+function renderPledges(v){
+  const listEl = document.getElementById('pledgesList');
+  const emptyEl = document.getElementById('pledgesEmpty');
+  emptyEl.classList.toggle('hidden', v.pledgeRows.length>0);
+  listEl.innerHTML = v.pledgeRows.map(p=>{
+    const actions = perms.canDonations ? `
+      <div class="pledge-row-actions">
+        <button class="pledge-mark-received" data-pledge="${p.id}">✓ Mark Received</button>
+        <button class="pledge-delete" data-pledge="${p.id}">🗑</button>
+      </div>` : '';
+    return `
+      <div class="pledge-row">
+        <div class="pledge-row-left">
+          <div class="pledge-row-title">${escapeHtml(p.flatLabel)} — ${escapeHtml(p.name)}</div>
+          <div class="pledge-row-sub">Pledged ${p.pledgedDateFmt}${p.note ? ' · '+escapeHtml(p.note) : ''}</div>
+        </div>
+        <div class="pledge-row-amt">${p.amountFmt}</div>
+        ${actions}
+      </div>`;
+  }).join('');
+
+  const panel = document.getElementById('pledgesPanel');
+  panel.classList.toggle('hidden', v.pledgeRows.length===0);
+  document.getElementById('pledgeSummaryAmt').textContent = v.totalPledgedFmt;
+  document.getElementById('pledgeSummarySub').textContent = v.pledgeRows.length+' pledge'+(v.pledgeRows.length===1?'':'s')+' awaiting follow-up';
+}
 
 /* ============================================================
    EXPENSE MODAL
@@ -1088,6 +1424,7 @@ function openExpenseModal(){
   document.getElementById('expDesc').value = '';
   document.getElementById('expAmount').value = '';
   document.getElementById('expDate').value = todayISO();
+  document.getElementById('expDate').dispatchEvent(new Event('change'));
   document.getElementById('expNote').value = '';
   setModeButtons('expModeRow', 'Cash');
   document.getElementById('expBillFile').value = '';
@@ -1176,6 +1513,8 @@ document.getElementById('saveExpenseBtn').addEventListener('click', async ()=>{
 document.getElementById('donationsTableBody').addEventListener('click', async (e)=>{
   const receiptBtn = e.target.closest('.print-receipt');
   if(receiptBtn){ printDonationReceipt(receiptBtn.dataset.id); return; }
+  const shareBtn = e.target.closest('.share-receipt');
+  if(shareBtn){ shareDonationReceipt(shareBtn.dataset.id); return; }
   const btn = e.target.closest('.delete-donation'); if(!btn) return;
   if(!perms.canDonations) return;
   if(!confirm('Delete this donation?')) return;
@@ -1187,7 +1526,9 @@ document.getElementById('donationsTableBody').addEventListener('click', async (e
 });
 document.getElementById('donationsCards').addEventListener('click', (e)=>{
   const receiptBtn = e.target.closest('.print-receipt');
-  if(receiptBtn) printDonationReceipt(receiptBtn.dataset.id);
+  if(receiptBtn){ printDonationReceipt(receiptBtn.dataset.id); return; }
+  const shareBtn = e.target.closest('.share-receipt');
+  if(shareBtn) shareDonationReceipt(shareBtn.dataset.id);
 });
 document.getElementById('expensesTableBody').addEventListener('click', async (e)=>{
   const btn = e.target.closest('.delete-expense'); if(!btn) return;
@@ -1252,6 +1593,7 @@ function openTransferModal(){
   document.getElementById('transferTo').value = otherProfile ? otherProfile.id : profile.id;
   document.getElementById('transferAmount').value = '';
   document.getElementById('transferDate').value = todayISO();
+  document.getElementById('transferDate').dispatchEvent(new Event('change'));
   document.getElementById('transferNote').value = '';
   transferModal.classList.remove('hidden');
 }
@@ -1344,6 +1686,20 @@ document.getElementById('budgetRows').addEventListener('input', (e)=>{
   const idx = Number(row.dataset.idx);
   if(budgetEditRows[idx].mode==='percent') budgetEditRows[idx].pct = input.value;
   else budgetEditRows[idx].amount = input.value;
+});
+document.getElementById('copyPrevBudgetBtn').addEventListener('click', ()=>{
+  const prevYear = String(Number(ui.year)-1);
+  const prevBudgets = store.budgets.filter(b=>b.year===prevYear);
+  if(!prevBudgets.length){ showToast('No budget found for '+prevYear+' to copy from'); return; }
+  prevBudgets.forEach(pb=>{
+    let row = budgetEditRows.find(r=>r.category.toLowerCase()===pb.category.toLowerCase());
+    if(!row){ row = { category: pb.category, mode:'amount', amount:'', pct:'' }; budgetEditRows.push(row); }
+    row.mode = pb.mode;
+    row.amount = pb.mode==='amount' ? pb.amount : '';
+    row.pct = pb.mode==='percent' ? pb.pct : '';
+  });
+  renderBudgetRows();
+  showToast('Copied from '+prevYear+' — review the amounts, then Save Budgets ✓');
 });
 document.getElementById('addBudgetCategoryBtn').addEventListener('click', ()=>{
   const input = document.getElementById('newBudgetCategory');
@@ -1708,6 +2064,55 @@ function expensesTableHtml(v){
       </tbody>
     </table>`;
 }
+function topDonorsHtml(v){
+  const cashDonors = v.donationsSorted.filter(d=>d.amount>0).sort((a,b)=>b.amount-a.amount).slice(0,10);
+  return `
+    <div class="report-section-title">Top Donors</div>
+    <table>
+      <thead><tr><th>#</th><th>Flat / Donor</th><th>Date</th><th class="num">Amount</th></tr></thead>
+      <tbody>
+        ${cashDonors.map((d,i)=>`
+          <tr>
+            <td>${i+1}</td>
+            <td>${escapeHtml(d.title)}</td>
+            <td>${d.dateFmt}</td>
+            <td class="num">${d.amountFmt}</td>
+          </tr>`).join('') || '<tr><td colspan="4">No cash donations recorded.</td></tr>'}
+      </tbody>
+    </table>`;
+}
+function budgetPerformanceHtml(v){
+  if(!v.budgetBreakdown.some(c=>c.hasBudget)) return '';
+  return `
+    <div class="report-section-title">Budget vs Actual</div>
+    <table>
+      <thead><tr><th>Category</th><th class="num">Budgeted</th><th class="num">Spent</th><th>Status</th></tr></thead>
+      <tbody>
+        ${v.budgetBreakdown.filter(c=>c.hasBudget).map(c=>`
+          <tr>
+            <td>${escapeHtml(c.category)}</td>
+            <td class="num">${c.allocatedFmt}</td>
+            <td class="num">${c.usedFmt}</td>
+            <td>${STATUS_LABEL[c.status]||''}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+function pledgesOutstandingHtml(v){
+  return `
+    <div class="report-section-title">Pledges Outstanding (${v.pledgeRows.length})</div>
+    <table>
+      <thead><tr><th>Flat / Name</th><th>Pledged</th><th class="num">Amount</th></tr></thead>
+      <tbody>
+        ${v.pledgeRows.map(p=>`
+          <tr>
+            <td>${escapeHtml(p.flatLabel)} — ${escapeHtml(p.name)}</td>
+            <td>${p.pledgedDateFmt}</td>
+            <td class="num">${p.amountFmt}</td>
+          </tr>`).join('') || '<tr><td colspan="3">No pledges outstanding.</td></tr>'}
+      </tbody>
+    </table>`;
+}
 function buildReportHTML(kind){
   const v = computeView();
   let stats = '';
@@ -1725,6 +2130,18 @@ function buildReportHTML(kind){
         <div class="report-stat"><div class="rlabel">TOTAL EXPENSES</div><div class="rval">${fmtINR(v.totalExpenses)}</div></div>
       </div>`;
     body = expensesTableHtml(v);
+  } else if(kind==='annual'){
+    stats = `
+      <div class="report-stats">
+        <div class="report-stat"><div class="rlabel">TOTAL COLLECTED</div><div class="rval">${fmtINR(v.totalCollected)}</div></div>
+        <div class="report-stat"><div class="rlabel">TOTAL EXPENSES</div><div class="rval">${fmtINR(v.totalExpenses)}</div></div>
+        <div class="report-stat"><div class="rlabel">BALANCE</div><div class="rval">${fmtINR(v.balance)}</div></div>
+        <div class="report-stat"><div class="rlabel">FLATS CONTRIBUTED</div><div class="rval">${v.contributedCount} / ${v.totalFlats}</div></div>
+      </div>`;
+    body = topDonorsHtml(v)
+      + `<div class="report-section-title">Expenses by Category</div><table><thead><tr><th>Category</th><th class="num">Amount</th></tr></thead><tbody>${v.categoryBreakdown.map(c=>`<tr><td>${escapeHtml(c.category)}</td><td class="num">${c.amountFmt}</td></tr>`).join('') || '<tr><td colspan="2">No expenses recorded.</td></tr>'}</tbody></table>`
+      + budgetPerformanceHtml(v)
+      + pledgesOutstandingHtml(v);
   } else {
     stats = `
       <div class="report-stats">
@@ -1735,7 +2152,7 @@ function buildReportHTML(kind){
       </div>`;
     body = donationsTableHtml(v) + expensesTableHtml(v);
   }
-  const titles = { donations:'Donations Report', expenses:'Expenses Report', both:'Financial Report' };
+  const titles = { donations:'Donations Report', expenses:'Expenses Report', both:'Financial Report', annual:'Annual Committee Report' };
   return `<div class="report-doc">
     ${reportHeader(titles[kind])}
     ${stats}
@@ -1750,6 +2167,7 @@ function printReport(kind){
 document.getElementById('exportDonationsBtn').addEventListener('click', ()=>printReport('donations'));
 document.getElementById('exportExpensesBtn').addEventListener('click', ()=>printReport('expenses'));
 document.getElementById('exportBothBtn').addEventListener('click', ()=>printReport('both'));
+document.getElementById('printAnnualReportBtn').addEventListener('click', ()=>printReport('annual'));
 
 /* ---------- single-donation printable receipt ---------- */
 function buildDonationReceiptHTML(id){
@@ -1781,6 +2199,45 @@ function buildDonationReceiptHTML(id){
 function printDonationReceipt(id){
   document.getElementById('printReportArea').innerHTML = buildDonationReceiptHTML(id);
   window.print();
+}
+
+/* ---------- share a donation receipt with the donor (WhatsApp / any app / clipboard) ---------- */
+function buildDonationReceiptText(id){
+  const d = store.donations.find(x=>x.id===id);
+  if(!d) return '';
+  const f = store.flats.find(x=>x.id===d.flat_id);
+  const isInKind = d.kind==='in_kind';
+  const amountLine = isInKind
+    ? (d.item_description||'In-kind contribution') + (d.amount>0 ? ' (est. '+fmtINR(d.amount)+')' : '')
+    : fmtINR(d.amount) + ' via ' + d.mode;
+  const lines = [
+    `🙏 ${store.settings.committee_name || 'Ganesh Pooja Committee'} — Donation Receipt`,
+    ``,
+    `Flat: ${f?f.label:d.flat_id}`,
+    `Received From: ${d.name}`,
+    `Amount: ${amountLine}`,
+    `Date: ${fmtDate(d.date)}`,
+    `Receipt No: ${d.id.slice(0,8).toUpperCase()}`,
+  ];
+  if(d.note) lines.push(`Note: ${d.note}`);
+  lines.push(``, `Thank you for your contribution! 🎉`);
+  return lines.join('\n');
+}
+async function shareDonationReceipt(id){
+  const text = buildDonationReceiptText(id);
+  if(!text) return;
+  if(navigator.share){
+    try{ await navigator.share({ title:'Donation Receipt', text }); return; }
+    catch(e){ if(e && e.name==='AbortError') return; /* fall through to other options on real errors */ }
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    try{
+      await navigator.clipboard.writeText(text);
+      showToast('Receipt copied — paste it into WhatsApp or a message ✓');
+      return;
+    }catch(e){ /* fall through to WhatsApp link */ }
+  }
+  window.open('https://wa.me/?text='+encodeURIComponent(text), '_blank');
 }
 
 /* ---------- backup export ---------- */
@@ -1844,16 +2301,16 @@ document.getElementById('clearAllBtn').addEventListener('click', async ()=>{
 });
 
 /* ---------- close modals on overlay click ---------- */
-const ALL_MODALS = [donationModal, expenseModal, flatModal, settingsModal, sevaDayModal, sevaSignupModal, transferModal, budgetModal];
+const ALL_MODALS = [donationModal, pledgeModal, expenseModal, flatModal, settingsModal, sevaDayModal, sevaSignupModal, transferModal, budgetModal, compareYearsModal];
 ALL_MODALS.forEach(modal=>{
-  modal.addEventListener('click', (e)=>{ if(e.target===modal) modal.classList.add('hidden'); });
+  modal.addEventListener('click', (e)=>{ if(e.target===modal){ modal.classList.add('hidden'); if(modal===donationModal) ui.pledgeBeingFulfilled = null; } });
 });
 
 /* ---------- Escape key closes whichever modal is open ---------- */
 document.addEventListener('keydown', (e)=>{
   if(e.key !== 'Escape') return;
   const open = ALL_MODALS.find(m => !m.classList.contains('hidden'));
-  if(open) open.classList.add('hidden');
+  if(open){ open.classList.add('hidden'); if(open===donationModal) ui.pledgeBeingFulfilled = null; }
 });
 
 /* ---------- offline / online awareness ---------- */

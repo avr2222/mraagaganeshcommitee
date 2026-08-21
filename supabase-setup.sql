@@ -57,6 +57,23 @@ create table if not exists public.ganesh_donations (
     check ((kind = 'cash' and amount > 0) or (kind = 'in_kind' and amount >= 0))
 );
 
+-- ---------- pledges ----------
+-- A pledge is a promise to donate ("I'll send ₹2000 later") — noted so it
+-- isn't forgotten, but NOT counted in Total Collected / Balance until it's
+-- actually marked received (which creates a real row in ganesh_donations).
+create table if not exists public.ganesh_pledges (
+  id uuid primary key default gen_random_uuid(),
+  flat_id text not null references public.ganesh_flats(id) on delete restrict,
+  name text not null default 'Resident',
+  amount numeric(12,2) not null check (amount > 0),
+  pledged_date date not null,
+  note text default '',
+  status text not null default 'pending' check (status in ('pending','received','cancelled')),
+  fulfilled_donation_id uuid references public.ganesh_donations(id) on delete set null,
+  created_by uuid references public.ganesh_profiles(id),
+  created_at timestamptz not null default now()
+);
+
 -- ---------- expenses ----------
 -- bill_url points at a photo of the receipt/bill in the 'receipts' storage
 -- bucket (set up below); bill_attached stays as a quick boolean flag kept
@@ -217,6 +234,7 @@ alter table public.ganesh_profiles enable row level security;
 alter table public.ganesh_settings enable row level security;
 alter table public.ganesh_flats enable row level security;
 alter table public.ganesh_donations enable row level security;
+alter table public.ganesh_pledges enable row level security;
 alter table public.ganesh_expenses enable row level security;
 alter table public.ganesh_prasadam_days enable row level security;
 alter table public.ganesh_prasadam_signups enable row level security;
@@ -284,6 +302,23 @@ create policy ganesh_donations_update on public.ganesh_donations for update
 
 drop policy if exists ganesh_donations_delete on public.ganesh_donations;
 create policy ganesh_donations_delete on public.ganesh_donations for delete
+  using (public.current_role() in ('super_admin','donation_collector'));
+
+-- ---- pledges ----
+drop policy if exists ganesh_pledges_select on public.ganesh_pledges;
+create policy ganesh_pledges_select on public.ganesh_pledges for select
+  using (auth.uid() is not null);
+
+drop policy if exists ganesh_pledges_insert on public.ganesh_pledges;
+create policy ganesh_pledges_insert on public.ganesh_pledges for insert
+  with check (public.current_role() in ('super_admin','donation_collector'));
+
+drop policy if exists ganesh_pledges_update on public.ganesh_pledges;
+create policy ganesh_pledges_update on public.ganesh_pledges for update
+  using (public.current_role() in ('super_admin','donation_collector'));
+
+drop policy if exists ganesh_pledges_delete on public.ganesh_pledges;
+create policy ganesh_pledges_delete on public.ganesh_pledges for delete
   using (public.current_role() in ('super_admin','donation_collector'));
 
 -- ---- expenses ----
@@ -433,7 +468,7 @@ do $$
 declare
   tbl text;
 begin
-  foreach tbl in array array['ganesh_flats','ganesh_donations','ganesh_expenses','ganesh_settings','ganesh_profiles','ganesh_prasadam_days','ganesh_prasadam_signups','ganesh_fund_transfers','ganesh_budgets','ganesh_opening_balances'] loop
+  foreach tbl in array array['ganesh_flats','ganesh_donations','ganesh_pledges','ganesh_expenses','ganesh_settings','ganesh_profiles','ganesh_prasadam_days','ganesh_prasadam_signups','ganesh_fund_transfers','ganesh_budgets','ganesh_opening_balances'] loop
     if not exists (
       select 1 from pg_publication_tables
       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = tbl
