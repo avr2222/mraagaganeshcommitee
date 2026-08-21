@@ -1454,6 +1454,63 @@ function parseWhatsAppDonationText(text){
   return rows;
 }
 
+// Simple Levenshtein edit distance, used to fuzzy-match donor names.
+function levenshtein(a, b){
+  a = a||''; b = b||'';
+  const m = a.length, n = b.length;
+  if(!m) return n; if(!n) return m;
+  const dp = Array.from({length:m+1}, (_,i)=>[i, ...Array(n).fill(0)]);
+  for(let j=0;j<=n;j++) dp[0][j] = j;
+  for(let i=1;i<=m;i++){
+    for(let j=1;j<=n;j++){
+      dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    }
+  }
+  return dp[m][n];
+}
+// Overly common Indian name components — a shared "Kumar" or "Reddy" between
+// two names is not good evidence they're the same person, so it alone should
+// never earn a confident suggestion.
+const COMMON_NAME_TOKENS = new Set(['kumar','reddy','singh','rao','babu','sharma','prasad','naidu','devi','nath','goud','raju','das']);
+// When an old ledger row has no flat number at all — just a donor name like
+// "Mallaiah" — search donations already in the database (any year) for a
+// similarly-named donor and suggest their flat. Never auto-applies; the
+// bulk-import preview shows it as a one-click suggestion the user confirms.
+function suggestFlatByName(rawName){
+  const name = String(rawName||'').trim().toLowerCase();
+  if(!name || name.length<3) return null;
+  const nameTokens = name.split(/\s+/).filter(Boolean);
+  let best = null;
+  store.donations.forEach(d=>{
+    const dName = String(d.name||'').trim().toLowerCase();
+    if(!dName) return;
+    let score;
+    if(dName===name){
+      score = 1;
+    } else {
+      const dTokens = dName.split(/\s+/).filter(Boolean);
+      const sharedTokens = nameTokens.filter(t=>t.length>=3 && dTokens.includes(t));
+      const meaningfulShared = sharedTokens.filter(t=>!COMMON_NAME_TOKENS.has(t));
+      if(meaningfulShared.length>0){
+        score = 0.85;
+      } else if(sharedTokens.length>0){
+        // Only a common surname-style word overlaps (e.g. both have "Kumar")
+        // — too weak on its own to suggest.
+        score = 0.6;
+      } else {
+        const dist = levenshtein(name, dName);
+        const maxLen = Math.max(name.length, dName.length);
+        score = 1 - dist/maxLen;
+      }
+    }
+    if(score >= 0.72 && (!best || score>best.score)){
+      const f = store.flats.find(x=>x.id===d.flat_id);
+      best = { score, flatId: d.flat_id, flatLabel: f?f.label:d.flat_id, matchedName: d.name };
+    }
+  });
+  return best;
+}
+
 // Pulls a flat number and a donor name out of messy free-text cash-book
 // notes like "Flat-101 Murthy-yettogive", "Sunil Kumar 204", "016-Owner",
 // "Pramod-212(For laddu)", or a bare "210" with no name at all.
@@ -1542,7 +1599,11 @@ function parseLedgerWorkbookRows(rows2D){
       // records a rupee value for it in the Cash In column.
       const inKindNote = parsed && parsed.note ? parsed.note : '';
       const isInKind = /laddu|prasad|idol|flower|decoration|garland|fruit(s)?\b/i.test(inKindNote);
-      if(!parsed){ out.push({ source:'donation', date, flatCode:null, name: notesRaw, amount:cashIn, kind:'cash', itemDescription:'', note:'Imported from cash book', matched:false, flatId:null, flatLabel: notesRaw }); continue; }
+      if(!parsed){
+        const suggestion = suggestFlatByName(notesRaw);
+        out.push({ source:'donation', date, flatCode:null, name: notesRaw, amount:cashIn, kind:'cash', itemDescription:'', note:'Imported from cash book', matched:false, flatId:null, flatLabel: notesRaw, suggestion });
+        continue;
+      }
       const flatId = 'A'+parsed.flatCode;
       const f = store.flats.find(x=>x.id===flatId);
       if(parsed.isPledge){
@@ -1731,6 +1792,14 @@ function renderBulkImportPreview(){
           ${store.flats.map(fl=>`<option value="${escapeHtml(fl.id)}">${escapeHtml(fl.label)}${fl.owner?' — '+escapeHtml(fl.owner):''}</option>`).join('')}
         </select>`
       : '';
+    // Cross-references the donor name against donations already imported
+    // (any year) — if a close name match exists, offer its flat as a
+    // one-click suggestion instead of making the user hunt manually.
+    const suggestionHint = (!r.matched && r.source!=='expense' && r.suggestion)
+      ? `<div class="bi-suggestion">💡 Did you mean <b>${escapeHtml(r.suggestion.flatLabel)}</b> — ${escapeHtml(r.suggestion.matchedName)}?
+          <button type="button" class="bi-suggestion-use" data-idx="${i}" data-flat="${escapeHtml(r.suggestion.flatId)}">Use this</button>
+        </div>`
+      : '';
     return `
       <div class="bi-row ${rowClass}">
         <input type="checkbox" class="bi-check" id="bi-check-${i}" data-idx="${i}" ${r.included && r.matched ? 'checked' : ''} ${r.matched ? '' : 'disabled'}>
@@ -1739,6 +1808,7 @@ function renderBulkImportPreview(){
           <div>
             <div class="bi-row-title">${title}</div>
             <div class="bi-row-sub">${sub}</div>
+            ${suggestionHint}
           </div>
         </label>
         ${flatPicker}
@@ -1757,22 +1827,30 @@ function renderBulkImportPreview(){
     + (expenseTotal>0 ? `, ${fmtINR(expenseTotal)} in expenses.` : '.');
 }
 
+function applyFlatToBulkImportRow(idx, flatId){
+  if(!flatId) return;
+  const f = store.flats.find(x=>x.id===flatId);
+  const r = bulkImportRows[idx];
+  r.flatId = flatId;
+  r.flatCode = flatId.replace(/^A/,'');
+  r.flatLabel = f ? f.label : flatId;
+  if(!r.name) r.name = (f && f.owner) || 'Resident';
+  r.matched = true;
+  r.isDuplicate = rowIsDuplicate(r);
+  r.included = !r.isDuplicate;
+  renderBulkImportPreview();
+}
+
+document.getElementById('bulkImportPreviewList').addEventListener('click', (e)=>{
+  const useBtn = e.target.closest('.bi-suggestion-use');
+  if(!useBtn) return;
+  applyFlatToBulkImportRow(Number(useBtn.dataset.idx), useBtn.dataset.flat);
+});
+
 document.getElementById('bulkImportPreviewList').addEventListener('change', (e)=>{
   const picker = e.target.closest('.bi-flat-picker');
   if(picker){
-    const idx = Number(picker.dataset.idx);
-    const flatId = picker.value;
-    if(!flatId) return;
-    const f = store.flats.find(x=>x.id===flatId);
-    const r = bulkImportRows[idx];
-    r.flatId = flatId;
-    r.flatCode = flatId.replace(/^A/,'');
-    r.flatLabel = f ? f.label : flatId;
-    if(!r.name) r.name = (f && f.owner) || 'Resident';
-    r.matched = true;
-    r.isDuplicate = rowIsDuplicate(r);
-    r.included = !r.isDuplicate;
-    renderBulkImportPreview();
+    applyFlatToBulkImportRow(Number(picker.dataset.idx), picker.value);
     return;
   }
   const check = e.target.closest('.bi-check'); if(!check) return;
