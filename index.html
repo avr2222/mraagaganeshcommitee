@@ -322,7 +322,7 @@
       <div class="table-panel">
         <table class="data-table">
           <thead>
-            <tr><th>FLAT</th><th>OWNER</th><th>TENANT</th><th class="num">CONTRIBUTION</th><th>STATUS</th><th></th></tr>
+            <tr><th data-sort-key="flat">FLAT</th><th data-sort-key="owner">OWNER</th><th data-sort-key="tenant">TENANT</th><th class="num" data-sort-key="contribution">CONTRIBUTION</th><th data-sort-key="status">STATUS</th><th></th></tr>
           </thead>
           <tbody id="flatsTableBody"></tbody>
         </table>
@@ -362,7 +362,7 @@
 
       <div class="table-panel">
         <table class="data-table">
-          <thead><tr><th>DONOR</th><th>MODE</th><th>DATE</th><th class="num">AMOUNT</th><th></th></tr></thead>
+          <thead><tr><th data-sort-key="donor">DONOR</th><th data-sort-key="mode">MODE</th><th data-sort-key="date">DATE</th><th class="num" data-sort-key="amount">AMOUNT</th><th></th></tr></thead>
           <tbody id="donationsTableBody"></tbody>
         </table>
       </div>
@@ -396,7 +396,7 @@
 
       <div class="table-panel">
         <table class="data-table">
-          <thead><tr><th>CATEGORY</th><th>DESCRIPTION</th><th>MODE</th><th>DATE</th><th class="num">AMOUNT</th><th></th></tr></thead>
+          <thead><tr><th data-sort-key="category">CATEGORY</th><th data-sort-key="description">DESCRIPTION</th><th data-sort-key="mode">MODE</th><th data-sort-key="date">DATE</th><th class="num" data-sort-key="amount">AMOUNT</th><th></th></tr></thead>
           <tbody id="expensesTableBody"></tbody>
         </table>
       </div>
@@ -421,7 +421,7 @@
 
       <div class="table-panel">
         <table class="data-table">
-          <thead><tr><th>TYPE</th><th>DETAILS</th><th>DATE</th><th class="num">AMOUNT</th></tr></thead>
+          <thead><tr><th data-sort-key="type">TYPE</th><th data-sort-key="details">DETAILS</th><th data-sort-key="date">DATE</th><th class="num" data-sort-key="amount">AMOUNT</th></tr></thead>
           <tbody id="txnTableBody"></tbody>
         </table>
       </div>
@@ -434,7 +434,11 @@
           <h1>Prasadam Seva</h1>
           <div class="subtle">Sign up to bring morning or evening prasadam on any of the festival days below.</div>
         </div>
-        <button class="btn btn-orange admin-only" id="addSevaDayBtn">+ Add Day</button>
+        <div class="head-actions">
+          <button class="btn btn-ghost" id="copySevaUrlBtn">🔗 Copy Sign-Up Link</button>
+          <button class="btn btn-ghost" id="copySevaSignupsBtn">📋 Copy Sevaks</button>
+          <button class="btn btn-orange admin-only" id="addSevaDayBtn">+ Add Day</button>
+        </div>
       </div>
 
       <div id="sevaDaysList" class="seva-days-list"></div>
@@ -787,6 +791,12 @@
           <input type="text" id="settingsUpi1" placeholder="e.g. 9008023884" style="margin-bottom:8px">
           <input type="text" id="settingsUpi2" placeholder="Second number (optional)">
           <div class="hint">Shown at the bottom of "Copy This Year's Donations" so residents know where to pay. Leave the second one blank if there's only one number.</div>
+        </div>
+
+        <div class="field admin-only" id="settingsSevaUrlField">
+          <label>SEVA SIGN-UP PAGE URL</label>
+          <input type="text" id="settingsSevaUrl" placeholder="e.g. https://yourname.github.io/yourrepo/seva-signup.html">
+          <div class="hint">The public link to seva-signup.html once it's live on GitHub Pages (or wherever it's hosted). Used by "Copy Sign-Up Link" on the Prasadam Seva page.</div>
         </div>
 
         <div class="field admin-only" id="settingsUsersField">

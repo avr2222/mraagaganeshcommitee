@@ -110,6 +110,48 @@ function escapeHtml(str){
 const ROLE_LABELS = { super_admin:'Super Admin', treasurer:'Treasurer', donation_collector:'Donation Collector', viewer:'Viewer' };
 function displayName(p){ return (p && (p.full_name || p.email)) || 'Unassigned'; }
 
+/* ---------- sortable table headers ---------- */
+// Applies a {key, dir} sort state to a list using a per-key value-extractor
+// map. Used by every data table (Flats, Donations, Expenses, Transactions)
+// so clicking a column header re-orders that table without touching the
+// underlying totals/breakdowns computed elsewhere from the unsorted data.
+function applySort(list, sortState, valueFns){
+  const fn = sortState && valueFns[sortState.key];
+  if(!fn) return list;
+  const sorted = [...list].sort((a,b)=>{
+    const va = fn(a), vb = fn(b);
+    if(va<vb) return -1;
+    if(va>vb) return 1;
+    return 0;
+  });
+  if(sortState.dir==='desc') sorted.reverse();
+  return sorted;
+}
+// Wires click-to-sort on a table's <th data-sort-key> cells once at startup
+// (the headers are static markup -- only <tbody> gets re-rendered).
+function wireSortableHeaders(theadSelector, sortState){
+  document.querySelectorAll(theadSelector+' th[data-sort-key]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const key = th.dataset.sortKey;
+      if(sortState.key===key){ sortState.dir = sortState.dir==='asc' ? 'desc' : 'asc'; }
+      else { sortState.key = key; sortState.dir = 'asc'; }
+      renderAll();
+    });
+  });
+}
+// Updates the ▲/▼ indicator + highlight on whichever header is active.
+function updateSortHeaderUI(theadSelector, sortState){
+  document.querySelectorAll(theadSelector+' th[data-sort-key]').forEach(th=>{
+    const isActive = th.dataset.sortKey===sortState.key;
+    th.classList.toggle('sorted', isActive);
+    const existingArrow = th.querySelector('.sort-arrow');
+    if(existingArrow) existingArrow.remove();
+    if(isActive){
+      th.insertAdjacentHTML('beforeend', ` <span class="sort-arrow">${sortState.dir==='asc'?'▲':'▼'}</span>`);
+    }
+  });
+}
+
 /* ---------- activity log: best-effort, never blocks the action it logs ---------- */
 async function logActivity(action, details){
   if(!profile) return;
@@ -122,7 +164,7 @@ async function logActivity(action, details){
 let session = null;
 let profile = null;         // { id, email, full_name, role }
 let perms = { isAdmin:false, canDonations:false, canExpenses:false, canEditFlats:false };
-const store = { flats:[], donations:[], pledges:[], expenses:[], settings:{committee_name:'Ganesh Pooja Committee', upi_number_1:'', upi_number_2:''}, profiles:[], sevaDays:[], sevaSignups:[], fundTransfers:[], budgets:[], openingBalances:[], activityLog:[] };
+const store = { flats:[], donations:[], pledges:[], expenses:[], settings:{committee_name:'Ganesh Pooja Committee', upi_number_1:'', upi_number_2:'', seva_signup_url:''}, profiles:[], sevaDays:[], sevaSignups:[], fundTransfers:[], budgets:[], openingBalances:[], activityLog:[] };
 const BUDGET_COLORS = ['#F97316','#2563EB','#16A34A','#DC2626','#9333EA','#0EA5E9','#CA8A04','#DB2777','#0D9488','#64748B','#EA580C','#4F46E5'];
 
 /* ---- transient UI state (not persisted) ---- */
@@ -139,7 +181,19 @@ const ui = {
   editingSevaDayId:null,
   authMode:'signin',
   pledgeBeingFulfilled:null,
+  // Sortable table headers -- default order matches each table's previous
+  // fixed behavior (flats by flat number, everything else by newest first),
+  // so nothing changes until a resident clicks a column header.
+  flatsSort:{key:'flat', dir:'asc'},
+  donationsSort:{key:'date', dir:'desc'},
+  expensesSort:{key:'date', dir:'desc'},
+  txnSort:{key:'date', dir:'desc'},
 };
+
+wireSortableHeaders('#screen-flats .data-table thead', ui.flatsSort);
+wireSortableHeaders('#screen-donations .data-table thead', ui.donationsSort);
+wireSortableHeaders('#screen-expenses .data-table thead', ui.expensesSort);
+wireSortableHeaders('#screen-transactions .data-table thead', ui.txnSort);
 
 /* ============================================================
    AUTH
@@ -981,15 +1035,24 @@ function renderBudgetOverview(v){
   }).join('');
 }
 
+const FLATS_SORT_FNS = {
+  flat: f => Number(flatNumberOf(f.label)) || 0,
+  owner: f => (f.owner||'').toLowerCase(),
+  tenant: f => (f.tenant||'').toLowerCase(),
+  contribution: f => f.contribution,
+  status: f => f.contributed ? 1 : 0,
+};
 function renderFlats(v){
   document.getElementById('flatsCount').textContent = store.flats.length + ' units';
   document.querySelectorAll('#flatsFilterSeg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.filter===ui.flatsFilter));
   document.getElementById('flatsSearch').value = ui.flatsSearch;
+  updateSortHeaderUI('#screen-flats .data-table thead', ui.flatsSort);
+  const sortedFlats = applySort(v.filteredFlats, ui.flatsSort, FLATS_SORT_FNS);
 
   const editBtn = (id) => perms.canEditFlats ? `<button class="item-card-edit" data-flat="${id}" title="Edit">✎</button>` : '';
   const editCell = (id) => perms.canEditFlats ? `<button class="row-edit-btn" data-flat="${id}" title="Edit">✎</button>` : '';
 
-  const cardHtml = v.filteredFlats.map(f=>`
+  const cardHtml = sortedFlats.map(f=>`
     <div class="item-card">
       <div>
         <div class="item-card-title">${escapeHtml(f.label)}</div>
@@ -1004,7 +1067,7 @@ function renderFlats(v){
   `).join('') || '<p class="empty-sub">No flats match.</p>';
   document.getElementById('flatsCards').innerHTML = cardHtml;
 
-  const rowHtml = v.filteredFlats.map(f=>`
+  const rowHtml = sortedFlats.map(f=>`
     <tr>
       <td class="strong">${escapeHtml(f.label)}</td>
       <td>${escapeHtml(f.owner||'—')}</td>
@@ -1017,6 +1080,12 @@ function renderFlats(v){
   document.getElementById('flatsTableBody').innerHTML = rowHtml;
 }
 
+const DONATIONS_SORT_FNS = {
+  donor: d => (d.title||'').toLowerCase(),
+  mode: d => (d.mode||'').toLowerCase(),
+  date: d => d.date,
+  amount: d => d.amount,
+};
 function renderDonations(v){
   renderPledges(v);
   document.getElementById('donationsTotalLabel').textContent = fmtINR(v.totalCollected);
@@ -1026,8 +1095,10 @@ function renderDonations(v){
       <div class="bar-track"><div class="bar-fill green" style="width:${c.pct}%"></div></div>
     </div>
   `).join('') || '<p class="empty-sub">No donations recorded for '+ui.year+'.</p>';
+  updateSortHeaderUI('#screen-donations .data-table thead', ui.donationsSort);
+  const sortedDonations = applySort(v.donationsSorted, ui.donationsSort, DONATIONS_SORT_FNS);
   const editDonBtn = (id) => perms.canDonations ? `<button class="item-card-edit edit-donation" data-id="${id}" title="Edit">✎</button>` : '';
-  document.getElementById('donationsCards').innerHTML = v.donationsSorted.map(d=>`
+  document.getElementById('donationsCards').innerHTML = sortedDonations.map(d=>`
     <div class="item-card">
       <div>
         <div class="item-card-title">${escapeHtml(d.title)}</div>
@@ -1044,7 +1115,7 @@ function renderDonations(v){
 
   const delCell = (id) => perms.canDonations ? `<button class="row-edit-btn delete-donation" data-id="${id}" title="Delete">🗑</button>` : '';
   const editDonCell = (id) => perms.canDonations ? `<button class="row-edit-btn edit-donation" data-id="${id}" title="Edit">✎</button>` : '';
-  document.getElementById('donationsTableBody').innerHTML = v.donationsSorted.map(d=>`
+  document.getElementById('donationsTableBody').innerHTML = sortedDonations.map(d=>`
     <tr>
       <td class="strong">${escapeHtml(d.title)}</td>
       <td>${escapeHtml(d.mode)}</td>
@@ -1055,6 +1126,13 @@ function renderDonations(v){
   `).join('') || '<tr class="empty-row"><td colspan="5">No donations recorded for '+ui.year+'.</td></tr>';
 }
 
+const EXPENSES_SORT_FNS = {
+  category: e => (e.title||'').toLowerCase(),
+  description: e => (e.description||'').toLowerCase(),
+  mode: e => (e.mode||'').toLowerCase(),
+  date: e => e.date,
+  amount: e => e.amount,
+};
 function renderExpenses(v){
   document.getElementById('expensesTotalLabel').textContent = fmtINR(v.totalExpenses);
   document.getElementById('categoryBreakdown').innerHTML = v.categoryBreakdown.map(c=>`
@@ -1070,9 +1148,11 @@ function renderExpenses(v){
     </div>
   `).join('') || '<p class="empty-sub">No expenses recorded for '+ui.year+'.</p>';
 
+  updateSortHeaderUI('#screen-expenses .data-table thead', ui.expensesSort);
+  const sortedExpenses = applySort(v.expensesSorted, ui.expensesSort, EXPENSES_SORT_FNS);
   const billLink = (url) => url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="View bill photo" style="margin-left:8px">📎</a>` : '';
   const editExpBtn = (id) => perms.canExpenses ? `<button class="item-card-edit edit-expense" data-id="${id}" title="Edit">✎</button>` : '';
-  document.getElementById('expensesCards').innerHTML = v.expensesSorted.map(e=>`
+  document.getElementById('expensesCards').innerHTML = sortedExpenses.map(e=>`
     <div class="item-card">
       <div>
         <div class="item-card-title">${escapeHtml(e.title)}${billLink(e.billUrl)}</div>
@@ -1087,7 +1167,7 @@ function renderExpenses(v){
 
   const delCell = (id) => perms.canExpenses ? `<button class="row-edit-btn delete-expense" data-id="${id}" title="Delete">🗑</button>` : '';
   const editCell = (id) => perms.canExpenses ? `<button class="row-edit-btn edit-expense" data-id="${id}" title="Edit">✎</button>` : '';
-  document.getElementById('expensesTableBody').innerHTML = v.expensesSorted.map(e=>`
+  document.getElementById('expensesTableBody').innerHTML = sortedExpenses.map(e=>`
     <tr>
       <td class="strong">${escapeHtml(e.title)}${billLink(e.billUrl)}</td>
       <td>${escapeHtml(e.description)}</td>
@@ -1099,10 +1179,18 @@ function renderExpenses(v){
   `).join('') || '<tr class="empty-row"><td colspan="6">No expenses recorded for '+ui.year+'.</td></tr>';
 }
 
+const TXN_SORT_FNS = {
+  type: tx => tx.typeLabel,
+  details: tx => (tx.title||'').toLowerCase(),
+  date: tx => tx.date,
+  amount: tx => tx.amount,
+};
 function renderTransactions(v){
   document.querySelectorAll('#txnFilterSeg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.filter===ui.txnFilter));
+  updateSortHeaderUI('#screen-transactions .data-table thead', ui.txnSort);
+  const sortedTxns = applySort(v.filteredTransactions, ui.txnSort, TXN_SORT_FNS);
 
-  document.getElementById('txnCards').innerHTML = v.filteredTransactions.map(tx=>`
+  document.getElementById('txnCards').innerHTML = sortedTxns.map(tx=>`
     <div class="item-card accent-left" style="border-left-color:${tx.color}">
       <div>
         <div class="item-card-title">${escapeHtml(tx.title)}</div>
@@ -1112,7 +1200,7 @@ function renderTransactions(v){
     </div>
   `).join('') || '<p class="empty-sub">No transactions.</p>';
 
-  document.getElementById('txnTableBody').innerHTML = v.filteredTransactions.map(tx=>`
+  document.getElementById('txnTableBody').innerHTML = sortedTxns.map(tx=>`
     <tr>
       <td><span class="status-cell" style="color:${tx.color}"><span class="dot" style="background:${tx.color}"></span>${tx.typeLabel}</span></td>
       <td><div class="item-card-title" style="font-size:14px">${escapeHtml(tx.title)}</div><div class="item-card-sub">${escapeHtml(tx.subtitle)}</div></td>
@@ -2618,6 +2706,69 @@ function openSevaDayModal(dayId){
 }
 function closeSevaDayModal(){ sevaDayModal.classList.add('hidden'); ui.editingSevaDayId = null; }
 document.getElementById('addSevaDayBtn').addEventListener('click', ()=>openSevaDayModal());
+document.getElementById('copySevaUrlBtn').addEventListener('click', async ()=>{
+  const url = (store.settings.seva_signup_url||'').trim();
+  if(!url){
+    if(perms.isAdmin){ showToast('Add the Seva Sign-Up Page URL in Settings first'); }
+    else { showToast('Ask your Super Admin to set up the sign-up link in Settings'); }
+    return;
+  }
+  const committeeName = store.settings.committee_name || 'Ganesh Pooja Committee';
+  const message = [
+    `🙏 *${committeeName} — Prasadam Seva Sign-Up* 🙏`,
+    'Sign up to bring prasadam for a morning or evening session — no login needed:',
+    url,
+    'Just pick a day and session, and add your name and flat number. 🕉️'
+  ].join('\n');
+  const ok = await copyToClipboard(message);
+  showToast(ok ? 'Copied! Paste into WhatsApp' : 'Could not copy — please copy manually');
+});
+/* "Copy Sevaks" -- builds a ready-to-paste WhatsApp message showing who
+   has signed up (the sevaks) for each seva day/session so far, and which
+   slots are still open, so the committee can post a status update and
+   nudge people toward empty slots without retyping the whole list by hand. */
+function buildSevaSignupsMessage(){
+  const days = [...store.sevaDays].sort((a,b)=>a.seva_date.localeCompare(b.seva_date));
+  if(!days.length) return null;
+  const committeeName = store.settings.committee_name || 'Ganesh Pooja Committee';
+
+  const lines = [];
+  days.forEach(day=>{
+    const dateLabel = new Date(day.seva_date+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+    lines.push(`📅 *${dateLabel}*${day.label ? ' — '+day.label : ''}`);
+    SEVA_SESSIONS.forEach(sess=>{
+      const signups = store.sevaSignups.filter(s=>s.day_id===day.id && s.session===sess.key);
+      if(signups.length){
+        const names = signups.map(s=>{
+          const f = s.flat_id ? store.flats.find(x=>x.id===s.flat_id) : null;
+          const flatLabel = f ? flatNumberOf(f.label) : (s.flat_id || 'Unknown');
+          return `Flat ${flatLabel} (${s.name})`;
+        }).join(', ');
+        lines.push(`${sess.icon} ${sess.label}: ${names}`);
+      } else {
+        lines.push(`${sess.icon} ${sess.label}: Open — sign up! 🙋`);
+      }
+    });
+    lines.push('');
+  });
+  while(lines.length && lines[lines.length-1]==='') lines.pop();
+
+  const url = (store.settings.seva_signup_url||'').trim();
+  const message = [
+    `🙏 *${committeeName} — Prasadam Seva Sevaks* 🙏`,
+    '',
+    ...lines,
+    '',
+    url ? 'Sign up for an open slot here: '+url : 'Contact your Super Admin to sign up for an open slot.'
+  ].join('\n');
+  return message;
+}
+document.getElementById('copySevaSignupsBtn').addEventListener('click', async ()=>{
+  const message = buildSevaSignupsMessage();
+  if(!message){ showToast('No seva days set up yet'); return; }
+  const ok = await copyToClipboard(message);
+  showToast(ok ? 'Copied! Paste into WhatsApp' : 'Could not copy — please copy manually');
+});
 document.getElementById('closeSevaDayModal').addEventListener('click', closeSevaDayModal);
 document.getElementById('cancelSevaDayBtn').addEventListener('click', closeSevaDayModal);
 const MAX_SEVA_DAY_RANGE = 45; // sane cap so a typo in "to date" can't try to insert years of rows
@@ -2806,6 +2957,7 @@ function openSettingsModal(){
   document.getElementById('settingsName').value = store.settings.committee_name || '';
   document.getElementById('settingsUpi1').value = store.settings.upi_number_1 || '';
   document.getElementById('settingsUpi2').value = store.settings.upi_number_2 || '';
+  document.getElementById('settingsSevaUrl').value = store.settings.seva_signup_url || '';
   document.getElementById('settingsFlatCount').value = store.flats.length;
   document.getElementById('obYearLabel').textContent = ui.year;
   const obRow = store.openingBalances.find(o=>o.year===ui.year);
@@ -2849,10 +3001,11 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
   const committeeName = document.getElementById('settingsName').value.trim() || 'Ganesh Pooja Committee';
   const upi1 = document.getElementById('settingsUpi1').value.trim();
   const upi2 = document.getElementById('settingsUpi2').value.trim();
+  const sevaUrl = document.getElementById('settingsSevaUrl').value.trim();
   const desiredCount = Math.max(1, Math.min(999, Number(document.getElementById('settingsFlatCount').value) || store.flats.length));
   const nameChanged = committeeName !== (store.settings.committee_name||'');
 
-  const { error: settingsErr } = await sb.from('ganesh_settings').update({ committee_name: committeeName, upi_number_1: upi1, upi_number_2: upi2, updated_at: new Date().toISOString() }).eq('id', 1);
+  const { error: settingsErr } = await sb.from('ganesh_settings').update({ committee_name: committeeName, upi_number_1: upi1, upi_number_2: upi2, seva_signup_url: sevaUrl, updated_at: new Date().toISOString() }).eq('id', 1);
   if(settingsErr){ showToast('Error: '+settingsErr.message); btn.disabled=false; return; }
   if(nameChanged) await logActivity('Updated committee name', committeeName);
 

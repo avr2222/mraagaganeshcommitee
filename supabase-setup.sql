@@ -32,6 +32,10 @@ insert into public.ganesh_settings (id, committee_name) values (1, 'Ganesh Pooja
 alter table public.ganesh_settings add column if not exists upi_number_1 text not null default '';
 alter table public.ganesh_settings add column if not exists upi_number_2 text not null default '';
 
+-- Migration: public seva-signup.html URL, editable from Settings, used by
+-- the "Copy Sign-Up Link" button on the Prasadam Seva page.
+alter table public.ganesh_settings add column if not exists seva_signup_url text not null default '';
+
 -- ---------- flats ----------
 create table if not exists public.ganesh_flats (
   id text primary key,          -- e.g. 'A001', 'A101'

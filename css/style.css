@@ -188,6 +188,10 @@ button{cursor:pointer}
 .data-table .status-cell{display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px}
 .data-table .row-edit-btn{border:none;background:var(--slate-100);color:var(--slate-600);width:28px;height:28px;border-radius:8px}
 .data-table .empty-row td{text-align:center;color:var(--slate-400);padding:32px 16px}
+.data-table th[data-sort-key]{cursor:pointer;user-select:none;white-space:nowrap}
+.data-table th[data-sort-key]:hover{color:var(--slate-600)}
+.data-table th[data-sort-key].sorted{color:var(--orange-dark)}
+.data-table th .sort-arrow{font-size:9px;margin-left:3px}
 
 /* Bottom nav (mobile) */
 .bottomnav{
