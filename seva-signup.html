@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
 <title>Prasadam Seva Sign-Up — Ganesh Pooja</title>
-<meta name="description" content="Sign up to bring prasadam for a morning or evening session — no login needed.">
+<meta name="description" content="Sign up for a Morning or Evening slot — Pooja, or Pooja & Prasadam both — no login needed.">
 <link rel="icon" href="icons/favicon-48.png" sizes="48x48" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&display=swap" rel="stylesheet">
@@ -63,7 +63,14 @@ const SUPABASE_URL = 'https://tzcernzuwtwgrsattjaw.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_qTZL-nfangfMUqdBcBvgww_q_ucMvXR';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const SEVA_SESSIONS = [{ key:'morning', label:'Morning', icon:'🌅' }, { key:'evening', label:'Evening', icon:'🌇' }];
+// Four seva slots per day: Morning/Evening crossed with Pooja / Pooja &
+// Prasadam (Both), so residents pick a time AND a type.
+const SEVA_SESSIONS = [
+  { key:'morning_pooja', label:'Morning — Pooja', icon:'🌅' },
+  { key:'morning_pooja_prasadam', label:'Morning — Pooja & Prasadam (Both)', icon:'🌅' },
+  { key:'evening_pooja', label:'Evening — Pooja', icon:'🌇' },
+  { key:'evening_pooja_prasadam', label:'Evening — Pooja & Prasadam (Both)', icon:'🌇' },
+];
 
 let days = [];
 let signups = [];
@@ -121,15 +128,17 @@ function render(){
         <div class="seva-signup-row">
           <span><span class="seva-signup-flat">${escapeHtml(s.flat_id)}</span> — <span class="seva-signup-name">${escapeHtml(s.name)}</span></span>
         </div>`).join('') || '<div class="seva-empty">No one signed up yet.</div>';
+      // Multiple people can sign up for the same slot -- it should never
+      // read as "taken" once someone joins. Both states say OPEN; a filled
+      // slot just adds how many have joined so far, still inviting more.
       const statusClass = list.length ? 'filled' : 'empty';
       const statusTag = list.length
-        ? `<span class="seva-status-tag filled">SIGNED UP</span>`
+        ? `<span class="seva-status-tag filled">OPEN · ${list.length} JOINED</span>`
         : `<span class="seva-status-tag empty">OPEN</span>`;
       return `
         <div class="seva-session ${statusClass}">
           <div class="seva-session-head">
             <div class="seva-session-title">${sess.icon} ${sess.label} ${statusTag}</div>
-            <span class="subtle" style="font-size:11px">${list.length} signed up</span>
           </div>
           <div class="seva-signup-list">${rows}</div>
           <button class="seva-add-btn" data-key="${formKey}" data-day="${day.id}" data-session="${sess.key}">+ Add Your Name</button>

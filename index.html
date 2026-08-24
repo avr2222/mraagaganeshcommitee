@@ -432,7 +432,7 @@
       <div class="screen-head">
         <div>
           <h1>Prasadam Seva</h1>
-          <div class="subtle">Sign up to bring morning or evening prasadam on any of the festival days below.</div>
+          <div class="subtle">Sign up for a Morning or Evening slot — Pooja, or Pooja &amp; Prasadam both — on any of the festival days below. Multiple people can join the same slot.</div>
         </div>
         <div class="head-actions">
           <button class="btn btn-ghost" id="copySevaUrlBtn">🔗 Copy Sign-Up Link</button>
@@ -686,6 +686,24 @@
             <input type="number" id="expAmount" placeholder="0" min="0">
           </div>
           <div class="hint amount-confirm" id="expAmountHint"></div>
+        </div>
+        <div class="field">
+          <label>PAYMENT TYPE</label>
+          <div class="mode-row" id="expPaymentTypeRow">
+            <button class="mode-btn" data-ptype="full">Full Payment</button>
+            <button class="mode-btn" data-ptype="advance">Advance</button>
+            <button class="mode-btn" data-ptype="balance">Balance / Final</button>
+          </div>
+        </div>
+        <div class="field hidden" id="expTotalExpectedField">
+          <label id="expTotalExpectedLabel">TOTAL EXPECTED AMOUNT (OPTIONAL)</label>
+          <div class="amount-input">
+            <span>₹</span>
+            <input type="number" id="expTotalExpected" placeholder="0" min="0">
+          </div>
+          <div class="hint amount-confirm" id="expTotalExpectedHint"></div>
+          <div class="hint" id="expBalanceDueHint"></div>
+          <div class="hint" id="expTotalExpectedStaticHint"></div>
         </div>
         <div class="field">
           <label>PAYMENT MODE</label>

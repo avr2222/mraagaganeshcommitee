@@ -259,6 +259,7 @@ button{cursor:pointer}
 
 .account-box{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--slate-200);border-radius:10px;padding:10px 12px;font-size:13px;font-weight:600;color:var(--ink)}
 .role-badge{background:var(--orange-light);color:var(--orange-dark);border-radius:8px;padding:3px 10px;font-size:11px;font-weight:700;text-transform:capitalize}
+.pill-tag{display:inline-block;border-radius:20px;padding:2px 8px;font-size:9.5px;font-weight:800;letter-spacing:.03em;vertical-align:middle}
 
 .users-list{display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto}
 
@@ -409,12 +410,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 @media (max-width:599px){.seva-sessions{grid-template-columns:1fr}}
 .seva-session{border:1px solid var(--slate-100);border-radius:12px;padding:12px}
 .seva-session.empty{border-color:#BBF7D0;background:#F0FDF4}
-.seva-session.filled{border-color:#FED7AA;background:var(--orange-light)}
+.seva-session.filled{border-color:#BFDBFE;background:#EFF6FF}
 .seva-session-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .seva-session-title{font-size:13px;font-weight:700;color:var(--slate-600);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .seva-status-tag{font-size:9.5px;font-weight:800;letter-spacing:.03em;padding:2px 7px;border-radius:20px;text-transform:uppercase}
 .seva-status-tag.empty{background:var(--green);color:#fff}
-.seva-status-tag.filled{background:var(--orange);color:#fff}
+.seva-status-tag.filled{background:var(--blue);color:#fff}
 .seva-signup-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
 .seva-signup-row{display:flex;justify-content:space-between;align-items:center;background:var(--slate-50);border-radius:8px;padding:7px 10px;font-size:12px}
 .seva-signup-name{font-weight:700;color:var(--ink)}

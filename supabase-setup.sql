@@ -110,6 +110,18 @@ create table if not exists public.ganesh_expenses (
 );
 alter table public.ganesh_expenses add column if not exists bill_url text;
 
+-- Migration: advance/balance payments -- e.g. a priest gets an advance on
+-- day 1 and the remainder a few days later. Each entry stands on its own
+-- (payment_type tags it as the full amount, an advance, or a balance/final
+-- payment); total_expected is optional context so a balance-due figure can
+-- be shown next to the entry. Existing rows default to 'full' with no
+-- total_expected, which is a no-op for anything recorded before this.
+alter table public.ganesh_expenses add column if not exists payment_type text not null default 'full';
+alter table public.ganesh_expenses drop constraint if exists ganesh_expenses_payment_type_check;
+alter table public.ganesh_expenses add constraint ganesh_expenses_payment_type_check
+  check (payment_type in ('full','advance','balance'));
+alter table public.ganesh_expenses add column if not exists total_expected numeric(12,2);
+
 -- Migration for databases created before "Unknown / Vacated Tenant" support —
 -- safe to re-run, a no-op once flat_id is already nullable.
 alter table public.ganesh_donations alter column flat_id drop not null;
@@ -126,7 +138,7 @@ create table if not exists public.ganesh_prasadam_days (
 create table if not exists public.ganesh_prasadam_signups (
   id uuid primary key default gen_random_uuid(),
   day_id uuid not null references public.ganesh_prasadam_days(id) on delete restrict,
-  session text not null check (session in ('morning','evening')),
+  session text not null check (session in ('morning_pooja','morning_pooja_prasadam','evening_pooja','evening_pooja_prasadam')),
   flat_id text not null references public.ganesh_flats(id) on delete restrict,
   name text not null,
   note text default '',
@@ -152,6 +164,25 @@ alter table public.ganesh_pledges add constraint ganesh_pledges_flat_id_fkey
 alter table public.ganesh_prasadam_signups drop constraint if exists ganesh_prasadam_signups_flat_id_fkey;
 alter table public.ganesh_prasadam_signups add constraint ganesh_prasadam_signups_flat_id_fkey
   foreign key (flat_id) references public.ganesh_flats(id) on delete restrict on update cascade;
+
+-- Migration: seva sign-up "session" combines time-of-day (Morning/Evening)
+-- and type (Pooja / Pooja & Prasadam Both) into 4 slots per day. The OLD
+-- constraint must be dropped BEFORE the UPDATE runs -- otherwise the UPDATE
+-- itself gets rejected by the still-active old constraint the moment it
+-- tries to write a new value that constraint doesn't allow yet. This is a
+-- catch-all normalize: every row is forced into one of the 4 final values,
+-- with a fallback for any stray/unexpected value, so re-running this block
+-- is always safe.
+alter table public.ganesh_prasadam_signups drop constraint if exists ganesh_prasadam_signups_session_check;
+update public.ganesh_prasadam_signups
+set session = case
+  when session in ('morning_pooja','morning_pooja_prasadam','evening_pooja','evening_pooja_prasadam') then session
+  when session in ('morning','pooja') then 'morning_pooja'
+  when session in ('evening','pooja_prasadam') then 'evening_pooja_prasadam'
+  else 'morning_pooja'
+end;
+alter table public.ganesh_prasadam_signups add constraint ganesh_prasadam_signups_session_check
+  check (session in ('morning_pooja','morning_pooja_prasadam','evening_pooja','evening_pooja_prasadam'));
 
 -- ---------- fund transfers ("who has how much" cash-in-hand) ----------
 create table if not exists public.ganesh_fund_transfers (

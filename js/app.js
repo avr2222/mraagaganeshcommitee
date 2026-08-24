@@ -82,7 +82,7 @@ function wireAmountConfirm(inputId, hintId){
   update();
 }
 [['donAmount','donAmountHint'],['donItemValue','donItemValueHint'],['pledgeAmount','pledgeAmountHint'],
- ['expAmount','expAmountHint'],['transferAmount','transferAmountHint']]
+ ['expAmount','expAmountHint'],['transferAmount','transferAmountHint'],['expTotalExpected','expTotalExpectedHint']]
   .forEach(([inputId,hintId]) => wireAmountConfirm(inputId,hintId));
 
 /* Simple dependency-free SVG donut chart. segments: [{value,color}] */
@@ -464,14 +464,20 @@ function computeView(){
       flatLabel, donorName:d.name, note:d.note||'', collectedByName:d.collected_by_name||'',
     };
   });
-  const expenseTx = expenses.map(e=>({
-    id:e.id, type:'out', typeLabel:'Money Out',
-    title:e.category, description:e.description,
-    subtitle:e.description+' • '+e.mode, mode:e.mode,
-    amount:e.amount, amountFmt:fmtINR(e.amount), amountSigned:'-'+fmtINR(e.amount), color:'#DC2626',
-    date:e.date, dateFmt:fmtDate(e.date), ts:e.created_at || e.date,
-    billUrl: e.bill_url || null,
-  }));
+  const expenseTx = expenses.map(e=>{
+    const paymentType = e.payment_type || 'full';
+    const totalExpected = e.total_expected!=null ? Number(e.total_expected) : null;
+    const balanceDue = (paymentType!=='full' && totalExpected!=null) ? (totalExpected - e.amount) : null;
+    return {
+      id:e.id, type:'out', typeLabel:'Money Out',
+      title:e.category, description:e.description,
+      subtitle:e.description+' • '+e.mode, mode:e.mode,
+      amount:e.amount, amountFmt:fmtINR(e.amount), amountSigned:'-'+fmtINR(e.amount), color:'#DC2626',
+      date:e.date, dateFmt:fmtDate(e.date), ts:e.created_at || e.date,
+      billUrl: e.bill_url || null,
+      paymentType, totalExpected, balanceDue,
+    };
+  });
   const transactions = donationTx.concat(expenseTx).sort((a,b)=> (b.ts>a.ts?1:-1));
   const recentTransactions = transactions.slice(0,5);
 
@@ -620,7 +626,7 @@ function computeView(){
     });
   const totalPledged = pledgeRows.reduce((s,p)=>s+p.amount,0);
 
-  // ---- Prasadam seva: how many morning/evening slots still need a volunteer ----
+  // ---- Prasadam seva: how many Pooja / Pooja & Prasadam slots still need a volunteer ----
   const sevaTotalSlots = store.sevaDays.length * SEVA_SESSIONS.length;
   let sevaOpenSlots = 0;
   store.sevaDays.forEach(day=>{
@@ -649,7 +655,14 @@ function computeView(){
    RENDERING
    ============================================================ */
 const SCREENS = ['dashboard','flats','donations','expenses','transactions','prasadam'];
-const SEVA_SESSIONS = [{ key:'morning', label:'Morning', icon:'🌅' }, { key:'evening', label:'Evening', icon:'🌇' }];
+// Four seva slots per day: Morning/Evening crossed with Pooja / Pooja &
+// Prasadam (Both), so residents pick a time AND a type.
+const SEVA_SESSIONS = [
+  { key:'morning_pooja', label:'Morning — Pooja', icon:'🌅' },
+  { key:'morning_pooja_prasadam', label:'Morning — Pooja & Prasadam (Both)', icon:'🌅' },
+  { key:'evening_pooja', label:'Evening — Pooja', icon:'🌇' },
+  { key:'evening_pooja_prasadam', label:'Evening — Pooja & Prasadam (Both)', icon:'🌇' },
+];
 
 function renderNav(){
   document.querySelectorAll('.nav-btn, .bn-btn').forEach(btn=>{
@@ -1152,11 +1165,36 @@ function renderExpenses(v){
   const sortedExpenses = applySort(v.expensesSorted, ui.expensesSort, EXPENSES_SORT_FNS);
   const billLink = (url) => url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="View bill photo" style="margin-left:8px">📎</a>` : '';
   const editExpBtn = (id) => perms.canExpenses ? `<button class="item-card-edit edit-expense" data-id="${id}" title="Edit">✎</button>` : '';
+  // Advance/Balance entries get a small badge + balance-due note so a
+  // part-payment (e.g. priest's advance on day 1) never looks like the
+  // full amount was settled -- what's still owed stays visible.
+  const paymentBadge = (e) => {
+    if(e.paymentType==='full') return '';
+    const label = e.paymentType==='advance' ? 'ADVANCE' : 'BALANCE';
+    const color = e.paymentType==='advance' ? '#D97706' : '#2563EB';
+    return `<span class="pill-tag" style="background:${color}1a;color:${color}">${label}</span>`;
+  };
+  const balanceNote = (e) => {
+    if(e.paymentType==='full' || e.balanceDue==null) return '';
+    // On an Advance, totalExpected is the whole cost, so balanceDue reads
+    // "X of Y total". On a Balance/Final payment, totalExpected instead
+    // means "what was still owed going in", so balanceDue reads as what's
+    // still left after this specific payment -- no "of Y total" suffix.
+    if(e.paymentType==='advance'){
+      if(e.balanceDue>0) return `<div class="hint" style="color:#D97706;margin-top:2px">Balance due: ${fmtINR(e.balanceDue)} of ${fmtINR(e.totalExpected)} total</div>`;
+      if(e.balanceDue===0) return `<div class="hint" style="color:#16A34A;margin-top:2px">Fully settled — ${fmtINR(e.totalExpected)} total</div>`;
+      return `<div class="hint" style="color:#DC2626;margin-top:2px">${fmtINR(-e.balanceDue)} over the expected ${fmtINR(e.totalExpected)} total</div>`;
+    }
+    if(e.balanceDue>0) return `<div class="hint" style="color:#D97706;margin-top:2px">Still owed after this payment: ${fmtINR(e.balanceDue)}</div>`;
+    if(e.balanceDue===0) return `<div class="hint" style="color:#16A34A;margin-top:2px">Fully settled</div>`;
+    return `<div class="hint" style="color:#DC2626;margin-top:2px">${fmtINR(-e.balanceDue)} more than what was owed</div>`;
+  };
   document.getElementById('expensesCards').innerHTML = sortedExpenses.map(e=>`
     <div class="item-card">
       <div>
-        <div class="item-card-title">${escapeHtml(e.title)}${billLink(e.billUrl)}</div>
+        <div class="item-card-title">${escapeHtml(e.title)}${billLink(e.billUrl)} ${paymentBadge(e)}</div>
         <div class="item-card-sub">${escapeHtml(e.subtitle)} · ${e.dateFmt}</div>
+        ${balanceNote(e)}
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <div class="item-card-amt" style="color:#DC2626">${e.amountFmt}</div>
@@ -1169,8 +1207,8 @@ function renderExpenses(v){
   const editCell = (id) => perms.canExpenses ? `<button class="row-edit-btn edit-expense" data-id="${id}" title="Edit">✎</button>` : '';
   document.getElementById('expensesTableBody').innerHTML = sortedExpenses.map(e=>`
     <tr>
-      <td class="strong">${escapeHtml(e.title)}${billLink(e.billUrl)}</td>
-      <td>${escapeHtml(e.description)}</td>
+      <td class="strong">${escapeHtml(e.title)}${billLink(e.billUrl)} ${paymentBadge(e)}</td>
+      <td>${escapeHtml(e.description)}${balanceNote(e)}</td>
       <td>${escapeHtml(e.mode)}</td>
       <td>${e.dateFmt}</td>
       <td class="num" style="color:#DC2626">${e.amountFmt}</td>
@@ -1268,15 +1306,17 @@ function renderPrasadam(){
           ${actions}
         </div>`;
       }).join('') || '<div class="seva-empty">No one signed up yet.</div>';
+      // Multiple people can sign up for the same slot -- it should never
+      // read as "taken" once someone joins. Both states say OPEN; a filled
+      // slot just adds how many have joined so far, still inviting more.
       const statusClass = signups.length ? 'filled' : 'empty';
       const statusTag = signups.length
-        ? `<span class="seva-status-tag filled">SIGNED UP</span>`
+        ? `<span class="seva-status-tag filled">OPEN · ${signups.length} JOINED</span>`
         : `<span class="seva-status-tag empty">OPEN</span>`;
       return `
         <div class="seva-session ${statusClass}">
           <div class="seva-session-head">
             <div class="seva-session-title">${sess.icon} ${sess.label} ${statusTag}</div>
-            <span class="subtle" style="font-size:11px">${signups.length} signed up</span>
           </div>
           <div class="seva-signup-list">${rows}</div>
           <button class="seva-add-btn" data-day="${day.id}" data-session="${sess.key}">+ Add Your Name</button>
@@ -1574,6 +1614,55 @@ document.getElementById('expModeRow').addEventListener('click', (e)=>{
   const btn = e.target.closest('.mode-btn'); if(!btn) return;
   setModeButtons('expModeRow', btn.dataset.mode);
 });
+/* Advance / Balance payment type for expenses -- e.g. a priest gets an
+   advance on day 1 and the remainder a few days later. Each entry stands
+   on its own (no linked "vendor" record); Total Expected is just typed in
+   again on the balance entry so both show what's left, per the simpler
+   design chosen over a full commitments/vendor tracking system. */
+function setPaymentTypeButtons(active){
+  document.querySelectorAll('#expPaymentTypeRow .mode-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.ptype===active);
+  });
+  document.getElementById('expTotalExpectedField').classList.toggle('hidden', active==='full');
+  // What this field means changes with the payment type, since entries
+  // aren't linked to each other -- on the Advance it's the whole expected
+  // cost; on the Balance/Final it must be what was STILL OWED going into
+  // this payment (not the original total), or the balance math below would
+  // come out wrong.
+  const label = document.getElementById('expTotalExpectedLabel');
+  const staticHint = document.getElementById('expTotalExpectedStaticHint');
+  if(active==='balance'){
+    label.textContent = 'AMOUNT STILL OWED BEFORE THIS PAYMENT (OPTIONAL)';
+    staticHint.textContent = "e.g. Priest's advance was ₹5,000 of a ₹15,000 total, so ₹10,000 was still owed — enter ₹10,000 here (not the original ₹15,000) and the amount you're paying now above.";
+  } else {
+    label.textContent = 'TOTAL EXPECTED AMOUNT (OPTIONAL)';
+    staticHint.textContent = 'e.g. Priest costs ₹15,000 total — enter ₹15,000 here and the advance you\'re paying now above.';
+  }
+}
+function updateExpBalanceDueHint(){
+  const hint = document.getElementById('expBalanceDueHint');
+  const ptype = document.querySelector('#expPaymentTypeRow .mode-btn.active')?.dataset.ptype || 'full';
+  const totalExpected = Number(document.getElementById('expTotalExpected').value);
+  const amount = Number(document.getElementById('expAmount').value);
+  if(!totalExpected || totalExpected<=0){ hint.textContent = ''; return; }
+  const remaining = totalExpected - amount;
+  if(ptype==='balance'){
+    if(remaining>0) hint.textContent = 'Still owed after this payment: '+fmtINR(remaining);
+    else if(remaining===0) hint.textContent = 'Fully settled — no balance remaining. 🎉';
+    else hint.textContent = 'This payment is '+fmtINR(-remaining)+' more than what was owed.';
+  } else {
+    if(remaining>0) hint.textContent = 'Balance due after this payment: '+fmtINR(remaining);
+    else if(remaining===0) hint.textContent = 'Fully paid — no balance remaining. 🎉';
+    else hint.textContent = 'This payment is '+fmtINR(-remaining)+' more than the expected total.';
+  }
+}
+document.getElementById('expPaymentTypeRow').addEventListener('click', (e)=>{
+  const btn = e.target.closest('.mode-btn'); if(!btn) return;
+  setPaymentTypeButtons(btn.dataset.ptype);
+  updateExpBalanceDueHint();
+});
+document.getElementById('expTotalExpected').addEventListener('input', updateExpBalanceDueHint);
+document.getElementById('expAmount').addEventListener('input', updateExpBalanceDueHint);
 document.getElementById('saveDonationBtn').addEventListener('click', async ()=>{
   if(!perms.canDonations){ showToast('You do not have permission to add donations'); return; }
   const rawFlatId = document.getElementById('donFlatSelect').value;
@@ -2278,6 +2367,10 @@ function openExpenseModal(expenseId){
   document.getElementById('expDate').dispatchEvent(new Event('change'));
   document.getElementById('expNote').value = existing ? (existing.note||'') : '';
   setModeButtons('expModeRow', existing ? existing.mode : 'Cash');
+  document.getElementById('expTotalExpected').value = existing && existing.total_expected!=null ? existing.total_expected : '';
+  document.getElementById('expTotalExpected').dispatchEvent(new Event('input'));
+  setPaymentTypeButtons(existing ? (existing.payment_type || 'full') : 'full');
+  updateExpBalanceDueHint();
   document.getElementById('expBillFile').value = '';
   const billLabel = document.getElementById('billUploadLabel');
   if(existing && existing.bill_url){ billLabel.textContent = '📎 Bill attached — choose a file to replace it'; billLabel.classList.add('attached'); }
@@ -2332,6 +2425,9 @@ document.getElementById('saveExpenseBtn').addEventListener('click', async ()=>{
   const date = document.getElementById('expDate').value || todayISO();
   const note = document.getElementById('expNote').value.trim();
   const billFile = document.getElementById('expBillFile').files[0] || null;
+  const paymentType = document.querySelector('#expPaymentTypeRow .mode-btn.active')?.dataset.ptype || 'full';
+  const totalExpectedRaw = document.getElementById('expTotalExpected').value;
+  const totalExpected = totalExpectedRaw !== '' ? Number(totalExpectedRaw) : null;
   if(!description){ showToast('Please enter a description'); return; }
   if(!amount || amount<=0){ showToast('Please enter a valid amount'); return; }
   let recordedBy = profile.id, recordedByName = displayName(profile);
@@ -2356,12 +2452,14 @@ document.getElementById('saveExpenseBtn').addEventListener('click', async ()=>{
   if(editingId){
     ({ error } = await sb.from('ganesh_expenses').update({
       category, description, amount, mode, date, note, bill_attached: !!billUrl, bill_url: billUrl,
+      payment_type: paymentType, total_expected: totalExpected,
     }).eq('id', editingId));
   } else {
     ({ error } = await sb.from('ganesh_expenses').insert({
       id: expenseId, category, description, amount, mode, date, note,
       bill_attached: !!billUrl, bill_url: billUrl, created_by: profile.id,
       recorded_by: recordedBy, recorded_by_name: recordedByName,
+      payment_type: paymentType, total_expected: totalExpected,
     }));
   }
   btn.disabled = false;
@@ -2716,9 +2814,9 @@ document.getElementById('copySevaUrlBtn').addEventListener('click', async ()=>{
   const committeeName = store.settings.committee_name || 'Ganesh Pooja Committee';
   const message = [
     `🙏 *${committeeName} — Prasadam Seva Sign-Up* 🙏`,
-    'Sign up to bring prasadam for a morning or evening session — no login needed:',
+    'Sign up for a Morning or Evening slot — Pooja, or Pooja & Prasadam both — no login needed:',
     url,
-    'Just pick a day and session, and add your name and flat number. 🕉️'
+    'Just pick a day and option, and add your name and flat number. Multiple people can join the same slot — the more the better! 🕉️'
   ].join('\n');
   const ok = await copyToClipboard(message);
   showToast(ok ? 'Copied! Paste into WhatsApp' : 'Could not copy — please copy manually');
@@ -2744,7 +2842,9 @@ function buildSevaSignupsMessage(){
           const flatLabel = f ? flatNumberOf(f.label) : (s.flat_id || 'Unknown');
           return `Flat ${flatLabel} (${s.name})`;
         }).join(', ');
-        lines.push(`${sess.icon} ${sess.label}: ${names}`);
+        // Multiple people can join the same slot -- listing names should
+        // never read as "full"; it always still says Open, more welcome.
+        lines.push(`${sess.icon} ${sess.label}: ${names} — Open, more welcome! 🙋`);
       } else {
         lines.push(`${sess.icon} ${sess.label}: Open — sign up! 🙋`);
       }
@@ -2759,7 +2859,7 @@ function buildSevaSignupsMessage(){
     '',
     ...lines,
     '',
-    url ? 'Sign up for an open slot here: '+url : 'Contact your Super Admin to sign up for an open slot.'
+    url ? 'You can signup for an open slot using this URL: '+url : 'Ask your Super Admin to add the seva sign-up URL in Settings so this message can include it.'
   ].join('\n');
   return message;
 }
