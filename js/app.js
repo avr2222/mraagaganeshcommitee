@@ -2986,11 +2986,15 @@ function openSevaSignupModal(dayId, session, existing){
   if(!day) return;
   sevaEditingId = existing ? existing.id : null;
   const dateLabel = new Date(day.seva_date+'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
-  const sess = SEVA_SESSIONS.find(s=>s.key===session);
   document.getElementById('sevaSignupTitle').textContent = existing ? 'Edit Sign-up' : 'Add Your Name';
-  document.getElementById('sevaSignupContext').textContent = `${dateLabel} — ${sess?sess.icon+' '+sess.label:session}`;
+  document.getElementById('sevaSignupContext').textContent = dateLabel;
   document.getElementById('sevaSignupModal').dataset.day = dayId;
-  document.getElementById('sevaSignupModal').dataset.session = session;
+  // Editable so an existing sign-up can be moved between Pooja / Pooja &
+  // Prasadam (Both), or between Morning / Evening, without deleting and
+  // re-adding it from scratch.
+  const typeSel = document.getElementById('sevaTypeSelect');
+  typeSel.innerHTML = SEVA_SESSIONS.map(s=>`<option value="${s.key}">${s.icon} ${s.label}</option>`).join('');
+  typeSel.value = session;
   const sel = document.getElementById('sevaFlatSelect');
   sel.innerHTML = '<option value="">Select flat</option>' + store.flats.map(fl=>
     `<option value="${escapeHtml(fl.id)}">${escapeHtml(fl.label)} — ${escapeHtml(fl.owner||'Unassigned')}</option>`).join('');
@@ -3010,16 +3014,16 @@ document.getElementById('saveSevaSignupBtn').addEventListener('click', async ()=
   const flatId = document.getElementById('sevaFlatSelect').value;
   const name = document.getElementById('sevaName').value.trim();
   const note = document.getElementById('sevaNote').value.trim();
+  const session = document.getElementById('sevaTypeSelect').value;
   if(!flatId){ showToast('Please select a flat'); return; }
   if(!name){ showToast('Please enter a name'); return; }
   const btn = document.getElementById('saveSevaSignupBtn');
   btn.disabled = true;
   let error;
   if(sevaEditingId){
-    ({ error } = await sb.from('ganesh_prasadam_signups').update({ flat_id: flatId, name, note }).eq('id', sevaEditingId));
+    ({ error } = await sb.from('ganesh_prasadam_signups').update({ flat_id: flatId, name, note, session }).eq('id', sevaEditingId));
   } else {
     const dayId = sevaSignupModal.dataset.day;
-    const session = sevaSignupModal.dataset.session;
     ({ error } = await sb.from('ganesh_prasadam_signups').insert({ day_id: dayId, session, flat_id: flatId, name, note, created_by: profile.id }));
   }
   btn.disabled = false;
