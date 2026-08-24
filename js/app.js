@@ -1554,13 +1554,15 @@ function buildYearDonationsMessage(){
 
   const lines = sorted.map((d,i)=>{
     const f = d.flat_id ? store.flats.find(x=>x.id===d.flat_id) : null;
-    const flatLabel = f ? flatNumberOf(f.label) : 'Unknown';
     const who = d.name || 'Resident';
+    // When the flat isn't known (long-vacated tenant, unrecognized name),
+    // skip the "Flat Unknown –" prefix and just show the name.
+    const whoPart = f ? `Flat ${flatNumberOf(f.label)} – ${who}` : who;
     if(d.kind === 'cash'){
-      return `${i+1}. Flat ${flatLabel} – ${who} – ${fmtINR(d.amount)}`;
+      return `${i+1}. ${whoPart} – ${fmtINR(d.amount)}`;
     }
     const item = d.item_description || 'Item Sponsor';
-    return `${i+1}. Flat ${flatLabel} – ${who} – ${inKindEmoji(item)} *${item}*`;
+    return `${i+1}. ${whoPart} – ${inKindEmoji(item)} *${item}*`;
   });
 
   const upiParts = [store.settings.upi_number_1, store.settings.upi_number_2].filter(Boolean);
