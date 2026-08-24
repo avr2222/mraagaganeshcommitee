@@ -420,6 +420,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .seva-signup-row{display:flex;justify-content:space-between;align-items:center;background:var(--slate-50);border-radius:8px;padding:7px 10px;font-size:12px}
 .seva-signup-name{font-weight:700;color:var(--ink)}
 .seva-signup-flat{color:var(--slate-400);font-weight:600}
+.seva-type-tag{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.02em;text-transform:uppercase;background:var(--orange-light);color:var(--orange);border-radius:20px;padding:2px 7px;margin-left:4px;vertical-align:middle}
 .seva-signup-actions{display:flex;gap:4px}
 .seva-signup-actions button{border:none;background:transparent;color:var(--slate-400);font-size:12px;padding:2px 4px}
 .seva-empty{font-size:12px;color:var(--slate-400);padding:4px 0 10px}

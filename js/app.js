@@ -663,6 +663,20 @@ const SEVA_SESSIONS = [
   { key:'evening_pooja', label:'Evening — Pooja', icon:'🌇' },
   { key:'evening_pooja_prasadam', label:'Evening — Pooja & Prasadam (Both)', icon:'🌇' },
 ];
+// Two cards per day (Morning / Evening); the Pooja vs Pooja & Prasadam
+// (Both) choice is made inside the Add-Your-Name form via SEVA_TYPES.
+const SEVA_TIMES = [
+  { key:'morning', label:'Morning', icon:'🌅' },
+  { key:'evening', label:'Evening', icon:'🌇' },
+];
+// "Both" listed first (default), "Only Pooja" second, per committee request.
+const SEVA_TYPES = [
+  { key:'pooja_prasadam', label:'Pooja & Prasadam (Both)', tag:'Pooja & Prasadam' },
+  { key:'pooja', label:'Only Pooja', tag:'Pooja only' },
+];
+function sevaTimeOf(sessionKey){ return String(sessionKey||'').startsWith('evening') ? 'evening' : 'morning'; }
+function sevaTypeOf(sessionKey){ return String(sessionKey||'').endsWith('pooja_prasadam') ? 'pooja_prasadam' : 'pooja'; }
+function sevaComposeSession(time, type){ return `${time}_${type}`; }
 
 function renderNav(){
   document.querySelectorAll('.nav-btn, .bn-btn').forEach(btn=>{
@@ -1292,17 +1306,18 @@ function renderPrasadam(){
     const dateLabel = dateObj.toLocaleDateString('en-IN',{weekday:'short', day:'numeric', month:'short', year:'numeric'});
     const editBtn = perms.isAdmin ? `<button class="seva-day-edit" data-day="${day.id}" title="Edit day">✎</button>` : '';
     const deleteBtn = perms.isAdmin ? `<button class="seva-day-delete" data-day="${day.id}" title="Remove day">🗑</button>` : '';
-    const sessionsHtml = SEVA_SESSIONS.map(sess=>{
-      const signups = store.sevaSignups.filter(s=>s.day_id===day.id && s.session===sess.key);
+    const sessionsHtml = SEVA_TIMES.map(time=>{
+      const signups = store.sevaSignups.filter(s=>s.day_id===day.id && sevaTimeOf(s.session)===time.key);
       const rows = signups.map(s=>{
         const f = store.flats.find(x=>x.id===s.flat_id);
+        const type = SEVA_TYPES.find(t=>t.key===sevaTypeOf(s.session)) || SEVA_TYPES[0];
         const actions = perms.isAdmin ? `
           <span class="seva-signup-actions">
             <button class="edit-signup" data-signup="${s.id}" title="Edit">✎</button>
             <button class="delete-signup" data-signup="${s.id}" title="Delete">🗑</button>
           </span>` : '';
         return `<div class="seva-signup-row">
-          <span><span class="seva-signup-flat">${escapeHtml(f?f.label:s.flat_id)}</span> — <span class="seva-signup-name">${escapeHtml(s.name)}</span></span>
+          <span><span class="seva-signup-flat">${escapeHtml(f?f.label:s.flat_id)}</span> — <span class="seva-signup-name">${escapeHtml(s.name)}</span> <span class="seva-type-tag">${escapeHtml(type.tag)}</span></span>
           ${actions}
         </div>`;
       }).join('') || '<div class="seva-empty">No one signed up yet.</div>';
@@ -1316,10 +1331,10 @@ function renderPrasadam(){
       return `
         <div class="seva-session ${statusClass}">
           <div class="seva-session-head">
-            <div class="seva-session-title">${sess.icon} ${sess.label} ${statusTag}</div>
+            <div class="seva-session-title">${time.icon} ${time.label} ${statusTag}</div>
           </div>
           <div class="seva-signup-list">${rows}</div>
-          <button class="seva-add-btn" data-day="${day.id}" data-session="${sess.key}">+ Add Your Name</button>
+          <button class="seva-add-btn" data-day="${day.id}" data-time="${time.key}">+ Add Your Name</button>
         </div>`;
     }).join('');
     return `
@@ -2959,12 +2974,12 @@ document.getElementById('sevaDaysList').addEventListener('click', async (e)=>{
     return;
   }
   const addBtn = e.target.closest('.seva-add-btn');
-  if(addBtn){ openSevaSignupModal(addBtn.dataset.day, addBtn.dataset.session, null); return; }
+  if(addBtn){ openSevaSignupModal(addBtn.dataset.day, addBtn.dataset.time, null); return; }
   const editBtn = e.target.closest('.edit-signup');
   if(editBtn){
     if(!perms.isAdmin) return;
     const s = store.sevaSignups.find(x=>x.id===editBtn.dataset.signup);
-    if(s) openSevaSignupModal(s.day_id, s.session, s);
+    if(s) openSevaSignupModal(s.day_id, sevaTimeOf(s.session), s);
     return;
   }
   const delBtn = e.target.closest('.delete-signup');
@@ -2981,7 +2996,7 @@ document.getElementById('sevaDaysList').addEventListener('click', async (e)=>{
 
 const sevaSignupModal = document.getElementById('sevaSignupModal');
 let sevaEditingId = null;
-function openSevaSignupModal(dayId, session, existing){
+function openSevaSignupModal(dayId, time, existing){
   const day = store.sevaDays.find(d=>d.id===dayId);
   if(!day) return;
   sevaEditingId = existing ? existing.id : null;
@@ -2992,9 +3007,12 @@ function openSevaSignupModal(dayId, session, existing){
   // Editable so an existing sign-up can be moved between Pooja / Pooja &
   // Prasadam (Both), or between Morning / Evening, without deleting and
   // re-adding it from scratch.
+  const timeSel = document.getElementById('sevaTimeSelect');
+  timeSel.innerHTML = SEVA_TIMES.map(t=>`<option value="${t.key}">${t.icon} ${t.label}</option>`).join('');
+  timeSel.value = existing ? sevaTimeOf(existing.session) : (time || 'morning');
   const typeSel = document.getElementById('sevaTypeSelect');
-  typeSel.innerHTML = SEVA_SESSIONS.map(s=>`<option value="${s.key}">${s.icon} ${s.label}</option>`).join('');
-  typeSel.value = session;
+  typeSel.innerHTML = SEVA_TYPES.map(t=>`<option value="${t.key}">${t.label}</option>`).join('');
+  typeSel.value = existing ? sevaTypeOf(existing.session) : SEVA_TYPES[0].key;
   const sel = document.getElementById('sevaFlatSelect');
   sel.innerHTML = '<option value="">Select flat</option>' + store.flats.map(fl=>
     `<option value="${escapeHtml(fl.id)}">${escapeHtml(fl.label)} — ${escapeHtml(fl.owner||'Unassigned')}</option>`).join('');
@@ -3014,7 +3032,9 @@ document.getElementById('saveSevaSignupBtn').addEventListener('click', async ()=
   const flatId = document.getElementById('sevaFlatSelect').value;
   const name = document.getElementById('sevaName').value.trim();
   const note = document.getElementById('sevaNote').value.trim();
-  const session = document.getElementById('sevaTypeSelect').value;
+  const time = document.getElementById('sevaTimeSelect').value;
+  const type = document.getElementById('sevaTypeSelect').value;
+  const session = sevaComposeSession(time, type);
   if(!flatId){ showToast('Please select a flat'); return; }
   if(!name){ showToast('Please enter a name'); return; }
   const btn = document.getElementById('saveSevaSignupBtn');

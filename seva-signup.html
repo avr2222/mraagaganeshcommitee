@@ -63,14 +63,20 @@ const SUPABASE_URL = 'https://tzcernzuwtwgrsattjaw.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_qTZL-nfangfMUqdBcBvgww_q_ucMvXR';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Four seva slots per day: Morning/Evening crossed with Pooja / Pooja &
-// Prasadam (Both), so residents pick a time AND a type.
-const SEVA_SESSIONS = [
-  { key:'morning_pooja', label:'Morning — Pooja', icon:'🌅' },
-  { key:'morning_pooja_prasadam', label:'Morning — Pooja & Prasadam (Both)', icon:'🌅' },
-  { key:'evening_pooja', label:'Evening — Pooja', icon:'🌇' },
-  { key:'evening_pooja_prasadam', label:'Evening — Pooja & Prasadam (Both)', icon:'🌇' },
+// Two cards per day (Morning / Evening); the Pooja vs Pooja & Prasadam
+// (Both) choice is made inside the Add-Your-Name form via SEVA_TYPES.
+const SEVA_TIMES = [
+  { key:'morning', label:'Morning', icon:'🌅' },
+  { key:'evening', label:'Evening', icon:'🌇' },
 ];
+// "Both" listed first (default), "Only Pooja" second, per committee request.
+const SEVA_TYPES = [
+  { key:'pooja_prasadam', label:'Pooja & Prasadam (Both)', tag:'Pooja & Prasadam' },
+  { key:'pooja', label:'Only Pooja', tag:'Pooja only' },
+];
+function sevaTimeOf(sessionKey){ return String(sessionKey||'').startsWith('evening') ? 'evening' : 'morning'; }
+function sevaTypeOf(sessionKey){ return String(sessionKey||'').endsWith('pooja_prasadam') ? 'pooja_prasadam' : 'pooja'; }
+function sevaComposeSession(time, type){ return `${time}_${type}`; }
 
 let days = [];
 let signups = [];
@@ -121,13 +127,17 @@ function render(){
   listEl.innerHTML = sorted.map(day=>{
     const dateObj = new Date(day.seva_date+'T00:00:00');
     const dateLabel = dateObj.toLocaleDateString('en-IN',{weekday:'short', day:'numeric', month:'short', year:'numeric'});
-    const sessionsHtml = SEVA_SESSIONS.map(sess=>{
-      const formKey = day.id+':'+sess.key;
-      const list = signups.filter(s=>s.day_id===day.id && s.session===sess.key);
-      const rows = list.map(s=>`
+    const typeOptions = SEVA_TYPES.map(t=>`<option value="${t.key}">${escapeHtml(t.label)}</option>`).join('');
+    const sessionsHtml = SEVA_TIMES.map(time=>{
+      const formKey = day.id+':'+time.key;
+      const list = signups.filter(s=>s.day_id===day.id && sevaTimeOf(s.session)===time.key);
+      const rows = list.map(s=>{
+        const type = SEVA_TYPES.find(t=>t.key===sevaTypeOf(s.session)) || SEVA_TYPES[0];
+        return `
         <div class="seva-signup-row">
-          <span><span class="seva-signup-flat">${escapeHtml(s.flat_id)}</span> — <span class="seva-signup-name">${escapeHtml(s.name)}</span></span>
-        </div>`).join('') || '<div class="seva-empty">No one signed up yet.</div>';
+          <span><span class="seva-signup-flat">${escapeHtml(s.flat_id)}</span> — <span class="seva-signup-name">${escapeHtml(s.name)}</span> <span class="seva-type-tag">${escapeHtml(type.tag)}</span></span>
+        </div>`;
+      }).join('') || '<div class="seva-empty">No one signed up yet.</div>';
       // Multiple people can sign up for the same slot -- it should never
       // read as "taken" once someone joins. Both states say OPEN; a filled
       // slot just adds how many have joined so far, still inviting more.
@@ -138,11 +148,12 @@ function render(){
       return `
         <div class="seva-session ${statusClass}">
           <div class="seva-session-head">
-            <div class="seva-session-title">${sess.icon} ${sess.label} ${statusTag}</div>
+            <div class="seva-session-title">${time.icon} ${time.label} ${statusTag}</div>
           </div>
           <div class="seva-signup-list">${rows}</div>
-          <button class="seva-add-btn" data-key="${formKey}" data-day="${day.id}" data-session="${sess.key}">+ Add Your Name</button>
-          <form class="inline-form ${openFormKey===formKey?'open':''}" data-key="${formKey}" data-day="${day.id}" data-session="${sess.key}">
+          <button class="seva-add-btn" data-key="${formKey}" data-day="${day.id}" data-time="${time.key}">+ Add Your Name</button>
+          <form class="inline-form ${openFormKey===formKey?'open':''}" data-key="${formKey}" data-day="${day.id}" data-time="${time.key}">
+            <select class="pf-type" required>${typeOptions}</select>
             <select class="pf-flat" required>${flatOptions}</select>
             <input class="pf-name" type="text" placeholder="Your name" required>
             <input class="pf-note" type="text" placeholder="Note (optional) — e.g. what you're bringing">
@@ -185,7 +196,9 @@ document.getElementById('pubDayList').addEventListener('submit', async (e)=>{
   if(!form) return;
   e.preventDefault();
   const dayId = form.dataset.day;
-  const session = form.dataset.session;
+  const time = form.dataset.time;
+  const type = form.querySelector('.pf-type').value;
+  const session = sevaComposeSession(time, type);
   const flatId = form.querySelector('.pf-flat').value;
   const name = form.querySelector('.pf-name').value.trim();
   const note = form.querySelector('.pf-note').value.trim();
