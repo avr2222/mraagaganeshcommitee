@@ -44,9 +44,16 @@ function wireDateConfirm(inputId, hintId){
   const hint = document.getElementById(hintId);
   if(!input || !hint) return;
   const update = () => {
-    if(!input.value){ hint.textContent = ''; return; }
+    if(!input.value){ hint.textContent = ''; hint.classList.remove('warn'); return; }
     const d = new Date(input.value+'T00:00:00');
-    hint.textContent = isNaN(d) ? '' : ('= ' + d.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}));
+    if(isNaN(d)){ hint.textContent = ''; hint.classList.remove('warn'); return; }
+    const nowYear = new Date().getFullYear();
+    // Sane-range check: catches typo'd years (e.g. 2205 for 2025, or a
+    // stray old year) without blocking anything -- it's a warning, not a
+    // validation error, since a genuinely old/future record is still valid.
+    const outOfRange = d.getFullYear() < (nowYear-1) || d.getFullYear() > (nowYear+1);
+    hint.textContent = (outOfRange ? '⚠ ' : '= ') + d.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}) + (outOfRange ? ' — check the year' : '');
+    hint.classList.toggle('warn', outOfRange);
   };
   input.addEventListener('input', update);
   input.addEventListener('change', update);
@@ -56,6 +63,27 @@ function wireDateConfirm(inputId, hintId){
  ['sevaDayDate','sevaDayDateHint'],['sevaDayDateTo','sevaDayDateToHint'],['pledgeDate','pledgeDateHint'],
  ['bulkImportDate','bulkImportDateHint']]
   .forEach(([inputId,hintId]) => wireDateConfirm(inputId,hintId));
+
+/* Same idea as wireDateConfirm, but for amount fields -- echoes the typed
+   number back as a fully-formatted Indian-style rupee amount ("= ₹1,25,000")
+   so a fat-fingered extra zero (₹1,25,000 vs ₹12,50,000) is obvious before
+   saving, since the raw <input type="number"> gives no grouping at all. */
+function wireAmountConfirm(inputId, hintId){
+  const input = document.getElementById(inputId);
+  const hint = document.getElementById(hintId);
+  if(!input || !hint) return;
+  const update = () => {
+    const n = Number(input.value);
+    if(!input.value || isNaN(n) || n<=0){ hint.textContent = ''; return; }
+    hint.textContent = '= ' + fmtINR(n);
+  };
+  input.addEventListener('input', update);
+  input.addEventListener('change', update);
+  update();
+}
+[['donAmount','donAmountHint'],['donItemValue','donItemValueHint'],['pledgeAmount','pledgeAmountHint'],
+ ['expAmount','expAmountHint'],['transferAmount','transferAmountHint']]
+  .forEach(([inputId,hintId]) => wireAmountConfirm(inputId,hintId));
 
 /* Simple dependency-free SVG donut chart. segments: [{value,color}] */
 function buildDonutSVG(segments, size, thickness){
@@ -94,7 +122,7 @@ async function logActivity(action, details){
 let session = null;
 let profile = null;         // { id, email, full_name, role }
 let perms = { isAdmin:false, canDonations:false, canExpenses:false, canEditFlats:false };
-const store = { flats:[], donations:[], pledges:[], expenses:[], settings:{committee_name:'Ganesh Pooja Committee'}, profiles:[], sevaDays:[], sevaSignups:[], fundTransfers:[], budgets:[], openingBalances:[], activityLog:[] };
+const store = { flats:[], donations:[], pledges:[], expenses:[], settings:{committee_name:'Ganesh Pooja Committee', upi_number_1:'', upi_number_2:''}, profiles:[], sevaDays:[], sevaSignups:[], fundTransfers:[], budgets:[], openingBalances:[], activityLog:[] };
 const BUDGET_COLORS = ['#F97316','#2563EB','#16A34A','#DC2626','#9333EA','#0EA5E9','#CA8A04','#DB2777','#0D9488','#64748B','#EA580C','#4F46E5'];
 
 /* ---- transient UI state (not persisted) ---- */
@@ -105,6 +133,10 @@ const ui = {
   flatsSearch:'',
   txnFilter:'all',
   editingFlatId:null,
+  editingExpenseId:null,
+  editingDonationId:null,
+  editingTransferId:null,
+  editingSevaDayId:null,
   authMode:'signin',
   pledgeBeingFulfilled:null,
 };
@@ -326,21 +358,34 @@ function yearOf(iso){ return (iso||'').slice(0,4); }
 function balanceOf(year, allDonations, allExpenses){
   const yDonations = allDonations.filter(d=>yearOf(d.date)===year);
   const yExpenses = allExpenses.filter(e=>yearOf(e.date)===year);
-  const collected = yDonations.reduce((s,d)=>s+d.amount,0);
+  // "collected" is total contribution value (cash + estimated in-kind value)
+  // for display purposes; "cashCollected" is cash-only and is what the
+  // Balance formula must use — an idol or laddu sponsorship's estimated
+  // value was never actual cash in hand, so it can't offset real expenses.
+  const cashCollected = yDonations.filter(d=>d.kind==='cash').reduce((s,d)=>s+d.amount,0);
+  const inKindValue = yDonations.filter(d=>d.kind==='in_kind').reduce((s,d)=>s+d.amount,0);
+  const collected = cashCollected + inKindValue;
   const spent = yExpenses.reduce((s,e)=>s+e.amount,0);
   const openingRow = store.openingBalances.find(o=>o.year===year);
   const opening = openingRow ? Number(openingRow.amount)||0 : 0;
-  return { collected, spent, opening, balance: opening + collected - spent };
+  return { collected, cashCollected, inKindValue, spent, opening, balance: opening + cashCollected - spent };
 }
 
 function computeView(){
   const donations = store.donations.filter(d => yearOf(d.date)===ui.year);
   const expenses = store.expenses.filter(e => yearOf(e.date)===ui.year);
-  const totalCollected = donations.reduce((s,d)=>s+d.amount,0);
+  // "collected" = total contribution value (cash + estimated in-kind value),
+  // shown as the headline "Total Collected" stat. "cashCollected" is the
+  // cash-only figure the Balance formula must use — an in-kind item's
+  // estimated value was never actual cash in hand, so it can't be netted
+  // against real cash expenses without overstating how much money there is.
+  const cashCollected = donations.filter(d=>d.kind==='cash').reduce((s,d)=>s+d.amount,0);
+  const inKindValue = donations.filter(d=>d.kind==='in_kind').reduce((s,d)=>s+d.amount,0);
+  const totalCollected = cashCollected + inKindValue;
   const totalExpenses = expenses.reduce((s,e)=>s+e.amount,0);
   const openingBalanceRow = store.openingBalances.find(o=>o.year===ui.year);
   const openingBalance = openingBalanceRow ? Number(openingBalanceRow.amount)||0 : 0;
-  const balance = openingBalance + totalCollected - totalExpenses;
+  const balance = openingBalance + cashCollected - totalExpenses;
 
   const contributedIds = new Set(donations.map(d=>d.flat_id));
   const totalFlats = store.flats.length;
@@ -438,7 +483,9 @@ function computeView(){
   // Fund custody: who is currently holding how much (collected − spent − handed off + received)
   const transfers = store.fundTransfers.filter(t => yearOf(t.date)===ui.year);
   const custody = {};
-  donations.forEach(d=>{ const who = d.collected_by_name || 'Unassigned'; custody[who] = (custody[who]||0) + d.amount; });
+  // Cash-only — an in-kind item's estimated value was never physically
+  // handed to the collector, so it shouldn't inflate their custody balance.
+  donations.filter(d=>d.kind==='cash').forEach(d=>{ const who = d.collected_by_name || 'Unassigned'; custody[who] = (custody[who]||0) + d.amount; });
   expenses.forEach(e=>{ const who = e.recorded_by_name || 'Unassigned'; custody[who] = (custody[who]||0) - e.amount; });
   transfers.forEach(t=>{
     const from = t.from_user_name || 'Unassigned', to = t.to_user_name || 'Unassigned';
@@ -532,7 +579,7 @@ function computeView(){
   const sevaFilledPct = sevaTotalSlots ? Math.round(sevaFilledSlots/sevaTotalSlots*100) : 0;
 
   return {
-    totalCollected, totalExpenses, balance, openingBalance,
+    totalCollected, cashCollected, inKindValue, totalExpenses, balance, openingBalance,
     contributedCount, notContributedCount, totalFlats, contributedPct, maxIE,
     recentTransactions, filteredTransactions, donationsSorted, expensesSorted,
     categoryBreakdown, collectedByBreakdown, recordedByBreakdown,
@@ -578,15 +625,27 @@ function renderDashboard(v){
   document.getElementById('dashHasData').classList.toggle('hidden', !hasData);
   document.getElementById('dashNoData').classList.toggle('hidden', hasData);
   document.getElementById('dashNoDataTitle').textContent = 'No data for ' + ui.year + ' yet';
+
+  const obRow = store.openingBalances.find(o=>o.year===ui.year);
+  const obBanner = document.getElementById('noOpeningBalanceBanner');
+  obBanner.classList.toggle('hidden', !!obRow);
+  document.getElementById('noOpeningBalanceYear').textContent = ui.year;
+
   if(!hasData) return;
 
   document.getElementById('statCollected').textContent = fmtINR(v.totalCollected);
+  const inKindHint = document.getElementById('statInKindHint');
+  inKindHint.classList.toggle('hidden', !v.inKindValue);
+  inKindHint.textContent = v.inKindValue ? 'Includes '+fmtINR(v.inKindValue)+' in-kind (est. value, not cash)' : '';
   document.getElementById('statExpenses').textContent = fmtINR(v.totalExpenses);
   document.getElementById('statBalance').textContent = fmtINR(v.balance);
   document.getElementById('statFlats').textContent = v.contributedCount+' / '+v.totalFlats;
   const balHint = document.getElementById('statBalanceHint');
-  balHint.classList.toggle('hidden', !v.openingBalance);
-  balHint.textContent = v.openingBalance ? 'Includes '+fmtINR(v.openingBalance)+' opening balance' : '';
+  const balHintParts = [];
+  if(v.openingBalance) balHintParts.push('Includes '+fmtINR(v.openingBalance)+' opening balance');
+  balHintParts.push('cash only — excludes in-kind value');
+  balHint.classList.remove('hidden');
+  balHint.textContent = balHintParts.join(' · ');
 
   document.getElementById('flatsProgressTitle').textContent = v.contributedCount+' / '+v.totalFlats+' Flats Contributed';
   document.getElementById('flatsProgressBar').style.width = v.contributedPct+'%';
@@ -606,6 +665,12 @@ function renderDashboard(v){
       <div class="bar-track"><div class="bar-fill ${c.isNegative?'red':'green'}" style="width:${c.pct}%"></div></div>
     </div>
   `).join('') || '<p class="empty-sub">Nothing collected or spent yet for '+ui.year+'.</p>';
+  // Only super_admin can edit/delete a transfer per RLS (treasurer can record
+  // one but not alter history) — gate the buttons the same way so they never
+  // appear only to fail.
+  const transferActions = perms.isAdmin ? `
+        <button class="item-card-edit edit-transfer" data-id="${'{{ID}}'}" title="Edit">✎</button>
+        <button class="item-card-edit delete-transfer" data-id="${'{{ID}}'}" title="Delete">🗑</button>` : '';
   document.getElementById('recentTransfersList').innerHTML = v.recentTransfers.map(t=>`
     <div class="txn-row">
       <div class="txn-left">
@@ -615,7 +680,10 @@ function renderDashboard(v){
           <div class="txn-sub">${escapeHtml(t.subtitle)} · ${t.dateFmt}</div>
         </div>
       </div>
-      <div class="txn-amt" style="color:#2563EB">${t.amountFmt}</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="txn-amt" style="color:#2563EB">${t.amountFmt}</div>
+        ${transferActions.replaceAll('{{ID}}', t.id)}
+      </div>
     </div>
   `).join('') || '<p class="empty-sub">No transfers recorded yet.</p>';
 
@@ -958,6 +1026,7 @@ function renderDonations(v){
       <div class="bar-track"><div class="bar-fill green" style="width:${c.pct}%"></div></div>
     </div>
   `).join('') || '<p class="empty-sub">No donations recorded for '+ui.year+'.</p>';
+  const editDonBtn = (id) => perms.canDonations ? `<button class="item-card-edit edit-donation" data-id="${id}" title="Edit">✎</button>` : '';
   document.getElementById('donationsCards').innerHTML = v.donationsSorted.map(d=>`
     <div class="item-card">
       <div>
@@ -966,6 +1035,7 @@ function renderDonations(v){
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <div class="item-card-amt" style="color:#16A34A">${d.amountFmt}</div>
+        ${editDonBtn(d.id)}
         <button class="item-card-edit print-receipt" data-id="${d.id}" title="Print receipt">🖨</button>
         <button class="item-card-edit share-receipt" data-id="${d.id}" title="Share receipt">🔗</button>
       </div>
@@ -973,13 +1043,14 @@ function renderDonations(v){
   `).join('') || '<p class="empty-sub">No donations recorded for '+ui.year+'.</p>';
 
   const delCell = (id) => perms.canDonations ? `<button class="row-edit-btn delete-donation" data-id="${id}" title="Delete">🗑</button>` : '';
+  const editDonCell = (id) => perms.canDonations ? `<button class="row-edit-btn edit-donation" data-id="${id}" title="Edit">✎</button>` : '';
   document.getElementById('donationsTableBody').innerHTML = v.donationsSorted.map(d=>`
     <tr>
       <td class="strong">${escapeHtml(d.title)}</td>
       <td>${escapeHtml(d.mode)}</td>
       <td>${d.dateFmt}</td>
       <td class="num" style="color:#16A34A">${d.amountFmt}</td>
-      <td><button class="row-edit-btn print-receipt" data-id="${d.id}" title="Print receipt">🖨</button> <button class="row-edit-btn share-receipt" data-id="${d.id}" title="Share receipt">🔗</button> ${delCell(d.id)}</td>
+      <td>${editDonCell(d.id)} <button class="row-edit-btn print-receipt" data-id="${d.id}" title="Print receipt">🖨</button> <button class="row-edit-btn share-receipt" data-id="${d.id}" title="Share receipt">🔗</button> ${delCell(d.id)}</td>
     </tr>
   `).join('') || '<tr class="empty-row"><td colspan="5">No donations recorded for '+ui.year+'.</td></tr>';
 }
@@ -1000,17 +1071,22 @@ function renderExpenses(v){
   `).join('') || '<p class="empty-sub">No expenses recorded for '+ui.year+'.</p>';
 
   const billLink = (url) => url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="View bill photo" style="margin-left:8px">📎</a>` : '';
+  const editExpBtn = (id) => perms.canExpenses ? `<button class="item-card-edit edit-expense" data-id="${id}" title="Edit">✎</button>` : '';
   document.getElementById('expensesCards').innerHTML = v.expensesSorted.map(e=>`
     <div class="item-card">
       <div>
         <div class="item-card-title">${escapeHtml(e.title)}${billLink(e.billUrl)}</div>
         <div class="item-card-sub">${escapeHtml(e.subtitle)} · ${e.dateFmt}</div>
       </div>
-      <div class="item-card-amt" style="color:#DC2626">${e.amountFmt}</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="item-card-amt" style="color:#DC2626">${e.amountFmt}</div>
+        ${editExpBtn(e.id)}
+      </div>
     </div>
   `).join('') || '<p class="empty-sub">No expenses recorded for '+ui.year+'.</p>';
 
   const delCell = (id) => perms.canExpenses ? `<button class="row-edit-btn delete-expense" data-id="${id}" title="Delete">🗑</button>` : '';
+  const editCell = (id) => perms.canExpenses ? `<button class="row-edit-btn edit-expense" data-id="${id}" title="Edit">✎</button>` : '';
   document.getElementById('expensesTableBody').innerHTML = v.expensesSorted.map(e=>`
     <tr>
       <td class="strong">${escapeHtml(e.title)}${billLink(e.billUrl)}</td>
@@ -1018,7 +1094,7 @@ function renderExpenses(v){
       <td>${escapeHtml(e.mode)}</td>
       <td>${e.dateFmt}</td>
       <td class="num" style="color:#DC2626">${e.amountFmt}</td>
-      <td>${delCell(e.id)}</td>
+      <td>${editCell(e.id)} ${delCell(e.id)}</td>
     </tr>
   `).join('') || '<tr class="empty-row"><td colspan="6">No expenses recorded for '+ui.year+'.</td></tr>';
 }
@@ -1088,6 +1164,7 @@ function renderPrasadam(){
   listEl.innerHTML = days.map(day=>{
     const dateObj = new Date(day.seva_date+'T00:00:00');
     const dateLabel = dateObj.toLocaleDateString('en-IN',{weekday:'short', day:'numeric', month:'short', year:'numeric'});
+    const editBtn = perms.isAdmin ? `<button class="seva-day-edit" data-day="${day.id}" title="Edit day">✎</button>` : '';
     const deleteBtn = perms.isAdmin ? `<button class="seva-day-delete" data-day="${day.id}" title="Remove day">🗑</button>` : '';
     const sessionsHtml = SEVA_SESSIONS.map(sess=>{
       const signups = store.sevaSignups.filter(s=>s.day_id===day.id && s.session===sess.key);
@@ -1124,7 +1201,7 @@ function renderPrasadam(){
             <div class="seva-day-title">${escapeHtml(dateLabel)}</div>
             ${day.label ? `<div class="seva-day-sub">${escapeHtml(day.label)}</div>` : ''}
           </div>
-          ${deleteBtn}
+          <span class="seva-day-actions">${editBtn}${deleteBtn}</span>
         </div>
         <div class="seva-sessions">${sessionsHtml}</div>
       </div>`;
@@ -1193,6 +1270,46 @@ document.querySelectorAll('#txnFilterSeg .seg-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{ ui.txnFilter = btn.dataset.filter; renderAll(); });
 });
 
+// Called after any donation is saved — if that flat still has no Owner name
+// on file, adopt this donor's name automatically so it doesn't stay blank
+// forever waiting for someone to open the Edit Flat modal by hand.
+async function maybeAutoFillFlatOwner(flatId, name){
+  if(!flatId || !name || name==='Resident') return;
+  const f = store.flats.find(x=>x.id===flatId);
+  if(!f || f.owner) return;
+  await sb.from('ganesh_flats').update({ owner: name }).eq('id', flatId);
+}
+
+// One-time backfill: donations already have donor names, but a flat's Owner
+// field only ever gets set if someone opens the Edit-Flat modal for it. This
+// fills every currently-blank Owner from that flat's earliest donation, so
+// years of already-imported donation names don't have to be retyped by hand.
+document.getElementById('fillOwnerNamesBtn').addEventListener('click', async ()=>{
+  if(!perms.isAdmin){ showToast('Only Super Admin can do this'); return; }
+  const blankFlats = store.flats.filter(f=>!f.owner);
+  if(!blankFlats.length){ showToast('Every flat already has an owner name'); return; }
+  const updates = [];
+  blankFlats.forEach(f=>{
+    const flatDonations = store.donations.filter(d=>d.flat_id===f.id && d.name && d.name!=='Resident')
+      .sort((a,b)=> (a.date<b.date?-1:1));
+    if(flatDonations.length) updates.push({ id:f.id, owner: flatDonations[0].name });
+  });
+  if(!updates.length){ showToast('No donations on file to fill names from yet'); return; }
+  if(!confirm(`Fill in Owner for ${updates.length} flat(s) using their earliest donation? You can still edit any of these by hand afterward.`)) return;
+  const btn = document.getElementById('fillOwnerNamesBtn');
+  btn.disabled = true;
+  let ok = 0;
+  for(const u of updates){
+    const { error } = await sb.from('ganesh_flats').update({ owner: u.owner }).eq('id', u.id);
+    if(!error) ok++;
+  }
+  btn.disabled = false;
+  await logActivity('Filled owner names', ok+' flat(s) from donation records');
+  await fetchAllData();
+  renderAll();
+  showToast(`Filled ${ok} owner name${ok===1?'':'s'} ✓`);
+});
+
 /* ============================================================
    DONATION MODAL
    ============================================================ */
@@ -1208,36 +1325,148 @@ document.getElementById('donKindRow').addEventListener('click', (e)=>{
   const btn = e.target.closest('.mode-btn'); if(!btn) return;
   setDonationKind(btn.dataset.kind);
 });
-function openDonationModal(flatId){
+// flatId pre-selects a flat when adding a fresh donation (or is null).
+// donationId, when passed, switches the modal into edit mode for that
+// existing donation instead — a wrong amount/date/flat no longer requires
+// delete-and-re-add, which used to lose collected_by/created_at provenance.
+function openDonationModal(flatId, donationId){
   if(!perms.canDonations){ showToast('You do not have permission to add donations'); return; }
   ui.pledgeBeingFulfilled = null;
-  const f = flatId ? store.flats.find(x=>x.id===flatId) : null;
+  const existing = donationId ? store.donations.find(x=>x.id===donationId) : null;
+  ui.editingDonationId = existing ? donationId : null;
+  document.getElementById('donationModalTitle').textContent = existing ? 'Edit Donation' : 'Add Donation';
+  const effectiveFlatId = existing ? existing.flat_id : flatId;
+  const f = effectiveFlatId ? store.flats.find(x=>x.id===effectiveFlatId) : null;
   const sel = document.getElementById('donFlatSelect');
   sel.innerHTML = '<option value="">Select flat</option>' + store.flats.map(fl=>
     `<option value="${escapeHtml(fl.id)}">${escapeHtml(fl.label)} — ${escapeHtml(fl.owner||'Unassigned')}</option>`).join('')
     + '<option value="__unknown__">🕵️ Unknown / Vacated Tenant (no flat)</option>';
-  sel.value = flatId || '';
-  document.getElementById('donName').value = f ? (f.owner||'') : '';
-  document.getElementById('donAmount').value = '';
-  document.getElementById('donItem').value = '';
-  document.getElementById('donItemValue').value = '';
-  document.getElementById('donDate').value = todayISO();
+  sel.value = existing ? (existing.flat_id || '__unknown__') : (flatId || '');
+  document.getElementById('donName').value = existing ? existing.name : (f ? (f.owner||'') : '');
+  document.getElementById('donAmount').value = existing && existing.kind==='cash' ? existing.amount : '';
+  document.getElementById('donAmount').dispatchEvent(new Event('input'));
+  document.getElementById('donItem').value = existing && existing.kind==='in_kind' ? existing.item_description : '';
+  document.getElementById('donItemValue').value = existing && existing.kind==='in_kind' ? existing.amount : '';
+  document.getElementById('donItemValue').dispatchEvent(new Event('input'));
+  document.getElementById('donDate').value = existing ? existing.date : todayISO();
   document.getElementById('donDate').dispatchEvent(new Event('change'));
-  document.getElementById('donNote').value = '';
-  setModeButtons('donModeRow', 'UPI');
-  setDonationKind('cash');
+  document.getElementById('donNote').value = existing ? (existing.note||'') : '';
+  setModeButtons('donModeRow', existing ? (existing.mode || 'UPI') : 'UPI');
+  setDonationKind(existing ? existing.kind : 'cash');
   const cbField = document.getElementById('donCollectedByField');
   cbField.hidden = !perms.isAdmin;
   if(perms.isAdmin){
     const cbSel = document.getElementById('donCollectedBy');
     cbSel.innerHTML = store.profiles.map(p=>`<option value="${p.id}">${escapeHtml(displayName(p))}</option>`).join('');
-    cbSel.value = profile.id;
+    cbSel.value = existing ? (existing.collected_by || profile.id) : profile.id;
   }
   donationModal.classList.remove('hidden');
 }
-function closeDonationModal(){ donationModal.classList.add('hidden'); ui.pledgeBeingFulfilled = null; }
+function closeDonationModal(){ donationModal.classList.add('hidden'); ui.pledgeBeingFulfilled = null; ui.editingDonationId = null; }
 document.getElementById('addDonationBtnDash').addEventListener('click', ()=>openDonationModal(null));
 document.getElementById('addDonationBtnList').addEventListener('click', ()=>openDonationModal(null));
+
+/* "Copy This Year's Donations" -- builds a ready-to-paste WhatsApp message
+   listing every individual donation recorded for the currently-selected
+   year (cash + in-kind), so the committee can post a full running list in
+   the residents' group without retyping anything. Uses the dashboard's
+   selected year filter (ui.year), not necessarily the current calendar
+   year -- so it still works correctly if someone checks a past year.
+   Numbered, sorted by flat number, no dates -- matches the committee's
+   existing WhatsApp posting style, with an in-kind item getting a themed
+   emoji instead of a rupee figure. */
+function flatNumberOf(flatLabelOrId){
+  // Strips a leading letter prefix ("A001" -> "001") since the WhatsApp
+  // posts refer to flats as "Flat 001", not "Flat A001".
+  const m = String(flatLabelOrId||'').match(/\d+/);
+  return m ? m[0] : String(flatLabelOrId||'');
+}
+function inKindEmoji(itemDescription){
+  const s = (itemDescription||'').toLowerCase();
+  if(s.includes('laddu') || s.includes('prasad')) return '🍬';
+  if(s.includes('idol')) return '🪔';
+  if(s.includes('flower')) return '🌸';
+  if(s.includes('decor')) return '🎈';
+  if(s.includes('sound') || s.includes('light')) return '🔊';
+  if(s.includes('cultural') || s.includes('program')) return '🎭';
+  return '🎁';
+}
+function buildYearDonationsMessage(){
+  const yearDonations = store.donations.filter(d=>yearOf(d.date)===ui.year);
+  if(!yearDonations.length){
+    return { message: null, count: 0 };
+  }
+
+  // Sort by flat number ascending; donations with no flat (Unknown/Vacated
+  // Tenant) sort to the end. Multiple donations from the same flat keep
+  // their original recorded order.
+  const sorted = [...yearDonations].sort((a,b)=>{
+    const fa = a.flat_id ? store.flats.find(x=>x.id===a.flat_id) : null;
+    const fb = b.flat_id ? store.flats.find(x=>x.id===b.flat_id) : null;
+    const na = fa ? Number(flatNumberOf(fa.label)) : Infinity;
+    const nb = fb ? Number(flatNumberOf(fb.label)) : Infinity;
+    if(na !== nb) return na - nb;
+    return new Date(a.created_at) - new Date(b.created_at);
+  });
+
+  const lines = sorted.map((d,i)=>{
+    const f = d.flat_id ? store.flats.find(x=>x.id===d.flat_id) : null;
+    const flatLabel = f ? flatNumberOf(f.label) : 'Unknown';
+    const who = d.name || 'Resident';
+    if(d.kind === 'cash'){
+      return `${i+1}. Flat ${flatLabel} – ${who} – ${fmtINR(d.amount)}`;
+    }
+    const item = d.item_description || 'Item Sponsor';
+    return `${i+1}. Flat ${flatLabel} – ${who} – ${inKindEmoji(item)} *${item}*`;
+  });
+
+  const upiParts = [store.settings.upi_number_1, store.settings.upi_number_2].filter(Boolean);
+  const upiLine = upiParts.length ? upiParts.join(' or ') : '(add your UPI number in Settings)';
+
+  const message = [
+    `🙏 *Ganesh Festival ${ui.year} – Donations Received* 🙏`,
+    'Thank you to all our residents for the generous support! 🎉',
+    'Sorted by flat number:',
+    ...lines,
+    "We truly appreciate everyone's contribution towards making this festival a grand success! 🙌",
+    'More names to be added as donations come in. 🕉️',
+    '💳 *Whoever wants to contribute, kindly pay to this UPI number:*',
+    upiLine,
+    'Please mention your flat number in the transaction note.'
+  ].join('\n');
+
+  return { message, count: yearDonations.length };
+}
+async function copyToClipboard(text){
+  try{
+    await navigator.clipboard.writeText(text);
+    return true;
+  }catch(e){
+    // Fallback for browsers/contexts where the async Clipboard API is
+    // unavailable (e.g. non-HTTPS or older WebView) -- a hidden textarea
+    // plus the legacy execCommand still works in those cases.
+    try{
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    }catch(e2){
+      return false;
+    }
+  }
+}
+document.getElementById('copyYearDonationsBtn').addEventListener('click', async ()=>{
+  const { message, count } = buildYearDonationsMessage();
+  if(!message){ showToast('No donations recorded for '+ui.year+' yet'); return; }
+  const ok = await copyToClipboard(message);
+  showToast(ok ? `Copied! ${count} donation${count===1?'':'s'} — paste into WhatsApp` : 'Could not copy — please copy manually');
+});
 document.getElementById('closeDonationModal').addEventListener('click', closeDonationModal);
 document.getElementById('cancelDonationBtn').addEventListener('click', closeDonationModal);
 document.getElementById('donFlatSelect').addEventListener('change', (e)=>{
@@ -1289,10 +1518,21 @@ document.getElementById('saveDonationBtn').addEventListener('click', async ()=>{
 
   const btn = document.getElementById('saveDonationBtn');
   btn.disabled = true;
-  const { data: inserted, error } = await sb.from('ganesh_donations').insert(payload).select();
+  const editingId = ui.editingDonationId;
+  let inserted, error;
+  if(editingId){
+    // Editing keeps the original created_by/collected_by/created_at provenance
+    // unless the admin explicitly re-picks "Collected By" — only the fields
+    // shown in the form are touched.
+    const updatePayload = { flat_id: flatId, name: name||'Resident', kind, date, note, collected_by: collectedBy, collected_by_name: collectedByName, amount: payload.amount, mode: payload.mode, item_description: payload.item_description };
+    ({ error } = await sb.from('ganesh_donations').update(updatePayload).eq('id', editingId));
+  } else {
+    ({ data: inserted, error } = await sb.from('ganesh_donations').insert(payload).select());
+  }
   btn.disabled = false;
   if(error){ showToast('Error: '+error.message); return; }
-  await logActivity('Added donation', (name||'Resident')+' ('+(flatId||'Unknown/Vacated')+') — '+(kind==='cash'?fmtINR(payload.amount):payload.item_description));
+  await logActivity(editingId ? 'Edited donation' : 'Added donation', (name||'Resident')+' ('+(flatId||'Unknown/Vacated')+') — '+(kind==='cash'?fmtINR(payload.amount):payload.item_description));
+  if(!editingId) await maybeAutoFillFlatOwner(flatId, name);
 
   // If this donation was entered from "Mark Received" on a pledge, close the loop:
   // mark that pledge as received and link it to the new donation row.
@@ -1306,7 +1546,7 @@ document.getElementById('saveDonationBtn').addEventListener('click', async ()=>{
   await fetchAllData();
   closeDonationModal();
   renderAll();
-  showToast(kind==='cash' ? 'Donation added successfully ✓' : 'In-kind contribution recorded ✓');
+  showToast(editingId ? 'Donation updated ✓' : (kind==='cash' ? 'Donation added successfully ✓' : 'In-kind contribution recorded ✓'));
 });
 
 /* ============================================================
@@ -1371,6 +1611,7 @@ function markPledgeReceived(pledgeId){
   openDonationModal(p.flat_id);
   document.getElementById('donName').value = p.name || '';
   document.getElementById('donAmount').value = p.amount;
+  document.getElementById('donAmount').dispatchEvent(new Event('input'));
   ui.pledgeBeingFulfilled = pledgeId;
 }
 async function deletePledge(pledgeId){
@@ -1909,7 +2150,7 @@ document.getElementById('confirmBulkImportBtn').addEventListener('click', async 
         item_description: r.kind==='in_kind' ? r.itemDescription : '',
       };
       const { error } = await sb.from('ganesh_donations').insert(payload);
-      if(!error) donationCount++;
+      if(!error){ donationCount++; await maybeAutoFillFlatOwner(r.flatId, r.name); }
     }
   }
   btn.disabled = false;
@@ -1927,32 +2168,48 @@ document.getElementById('confirmBulkImportBtn').addEventListener('click', async 
    EXPENSE MODAL
    ============================================================ */
 const expenseModal = document.getElementById('expenseModal');
-function openExpenseModal(){
+// Pass an existing expense's id to edit it in place (including changing its
+// category — the field is free-text with a suggestion list, so any old or
+// custom category can simply be retyped); omit it to add a new expense.
+function openExpenseModal(expenseId){
   if(!perms.canExpenses){ showToast('You do not have permission to add expenses'); return; }
-  document.getElementById('expense-categories').innerHTML = CATEGORIES.map(c=>`<option value="${escapeHtml(c)}"></option>`).join('');
-  document.getElementById('expCategory').value = CATEGORIES[0];
-  document.getElementById('expDesc').value = '';
-  document.getElementById('expAmount').value = '';
-  document.getElementById('expDate').value = todayISO();
+  const existing = expenseId ? store.expenses.find(x=>x.id===expenseId) : null;
+  ui.editingExpenseId = existing ? expenseId : null;
+  document.getElementById('expenseModalTitle').textContent = existing ? 'Edit Expense' : 'Add Expense';
+  // The usual CATEGORIES list, plus the expense's own category if it's an
+  // older/custom one that's since fallen off that list — so editing never
+  // silently blanks out or hides what it was actually filed under.
+  const categoryOptions = existing && !CATEGORIES.includes(existing.category)
+    ? [...CATEGORIES, existing.category] : CATEGORIES;
+  document.getElementById('expense-categories').innerHTML = categoryOptions.map(c=>`<option value="${escapeHtml(c)}"></option>`).join('');
+  document.getElementById('expCategory').value = existing ? existing.category : CATEGORIES[0];
+  document.getElementById('expDesc').value = existing ? existing.description : '';
+  document.getElementById('expAmount').value = existing ? existing.amount : '';
+  document.getElementById('expAmount').dispatchEvent(new Event('input'));
+  document.getElementById('expDate').value = existing ? existing.date : todayISO();
   document.getElementById('expDate').dispatchEvent(new Event('change'));
-  document.getElementById('expNote').value = '';
-  setModeButtons('expModeRow', 'Cash');
+  document.getElementById('expNote').value = existing ? (existing.note||'') : '';
+  setModeButtons('expModeRow', existing ? existing.mode : 'Cash');
   document.getElementById('expBillFile').value = '';
   const billLabel = document.getElementById('billUploadLabel');
-  billLabel.textContent = '📎 Attach bill photo (optional)';
-  billLabel.classList.remove('attached');
+  if(existing && existing.bill_url){ billLabel.textContent = '📎 Bill attached — choose a file to replace it'; billLabel.classList.add('attached'); }
+  else { billLabel.textContent = '📎 Attach bill photo (optional)'; billLabel.classList.remove('attached'); }
   const rbField = document.getElementById('expRecordedByField');
   rbField.hidden = !perms.isAdmin;
   if(perms.isAdmin){
     const rbSel = document.getElementById('expRecordedBy');
     rbSel.innerHTML = store.profiles.map(p=>`<option value="${p.id}">${escapeHtml(displayName(p))}</option>`).join('');
-    rbSel.value = profile.id;
+    rbSel.value = existing ? (existing.recorded_by || profile.id) : profile.id;
   }
   expenseModal.classList.remove('hidden');
 }
-function closeExpenseModal(){ expenseModal.classList.add('hidden'); }
-document.getElementById('addExpenseBtnDash').addEventListener('click', openExpenseModal);
-document.getElementById('addExpenseBtnList').addEventListener('click', openExpenseModal);
+function closeExpenseModal(){ expenseModal.classList.add('hidden'); ui.editingExpenseId = null; }
+document.getElementById('addExpenseBtnDash').addEventListener('click', ()=>openExpenseModal());
+document.getElementById('addExpenseBtnList').addEventListener('click', ()=>openExpenseModal());
+document.getElementById('expensesCards').addEventListener('click', (e)=>{
+  const btn = e.target.closest('.edit-expense'); if(!btn) return;
+  openExpenseModal(btn.dataset.id);
+});
 document.getElementById('closeExpenseModal').addEventListener('click', closeExpenseModal);
 document.getElementById('cancelExpenseBtn').addEventListener('click', closeExpenseModal);
 document.getElementById('expBillFile').addEventListener('change', (e)=>{
@@ -1998,39 +2255,61 @@ document.getElementById('saveExpenseBtn').addEventListener('click', async ()=>{
   const btn = document.getElementById('saveExpenseBtn');
   btn.disabled = true;
 
-  const expenseId = uuidv4();
-  let billUrl = null;
+  const editingId = ui.editingExpenseId;
+  const existing = editingId ? store.expenses.find(x=>x.id===editingId) : null;
+  const expenseId = editingId || uuidv4();
+  let billUrl = existing ? (existing.bill_url || null) : null;
   if(billFile){
     try{ billUrl = await uploadBillPhoto(expenseId, billFile); }
     catch(e){ btn.disabled = false; showToast('Bill upload failed: '+e.message); return; }
   }
 
-  const { error } = await sb.from('ganesh_expenses').insert({
-    id: expenseId, category, description, amount, mode, date, note,
-    bill_attached: !!billUrl, bill_url: billUrl, created_by: profile.id,
-    recorded_by: recordedBy, recorded_by_name: recordedByName,
-  });
+  let error;
+  if(editingId){
+    ({ error } = await sb.from('ganesh_expenses').update({
+      category, description, amount, mode, date, note, bill_attached: !!billUrl, bill_url: billUrl,
+    }).eq('id', editingId));
+  } else {
+    ({ error } = await sb.from('ganesh_expenses').insert({
+      id: expenseId, category, description, amount, mode, date, note,
+      bill_attached: !!billUrl, bill_url: billUrl, created_by: profile.id,
+      recorded_by: recordedBy, recorded_by_name: recordedByName,
+    }));
+  }
   btn.disabled = false;
   if(error){ showToast('Error: '+error.message); return; }
-  await logActivity('Added expense', category+' — '+fmtINR(amount));
+  await logActivity(editingId ? 'Edited expense' : 'Added expense', category+' — '+fmtINR(amount));
   await fetchAllData();
   closeExpenseModal();
   renderAll();
-  showToast('Expense added successfully ✓');
+  showToast(editingId ? 'Expense updated ✓' : 'Expense added successfully ✓');
 });
 
 /* ---------- delete donation/expense ---------- */
+// If this donation had fulfilled a pledge (via "Mark Received"), deleting it
+// must not leave that pledge stranded: revert it to pending and unlink it,
+// otherwise the money disappears from both Total Collected AND the pledge
+// tracker at once, with no trace either place.
+async function revertPledgeIfFulfilledBy(donationId){
+  const linked = store.pledges.find(p=>p.fulfilled_donation_id===donationId);
+  if(!linked) return;
+  await sb.from('ganesh_pledges').update({ status:'pending', fulfilled_donation_id:null }).eq('id', linked.id);
+  await logActivity('Pledge reverted to pending', (linked.name||'Resident')+' — its donation was deleted');
+}
 document.getElementById('donationsTableBody').addEventListener('click', async (e)=>{
   const receiptBtn = e.target.closest('.print-receipt');
   if(receiptBtn){ printDonationReceipt(receiptBtn.dataset.id); return; }
   const shareBtn = e.target.closest('.share-receipt');
   if(shareBtn){ shareDonationReceipt(shareBtn.dataset.id); return; }
+  const editBtn = e.target.closest('.edit-donation');
+  if(editBtn){ openDonationModal(null, editBtn.dataset.id); return; }
   const btn = e.target.closest('.delete-donation'); if(!btn) return;
   if(!perms.canDonations) return;
   if(!confirm('Delete this donation?')) return;
   const d = store.donations.find(x=>x.id===btn.dataset.id);
   const { error } = await sb.from('ganesh_donations').delete().eq('id', btn.dataset.id);
   if(error){ showToast('Error: '+error.message); return; }
+  await revertPledgeIfFulfilledBy(btn.dataset.id);
   await logActivity('Deleted donation', d ? (d.name+' — '+fmtINR(d.amount)) : btn.dataset.id);
   await fetchAllData(); renderAll(); showToast('Donation deleted');
 });
@@ -2038,9 +2317,13 @@ document.getElementById('donationsCards').addEventListener('click', (e)=>{
   const receiptBtn = e.target.closest('.print-receipt');
   if(receiptBtn){ printDonationReceipt(receiptBtn.dataset.id); return; }
   const shareBtn = e.target.closest('.share-receipt');
-  if(shareBtn) shareDonationReceipt(shareBtn.dataset.id);
+  if(shareBtn){ shareDonationReceipt(shareBtn.dataset.id); return; }
+  const editBtn = e.target.closest('.edit-donation');
+  if(editBtn) openDonationModal(null, editBtn.dataset.id);
 });
 document.getElementById('expensesTableBody').addEventListener('click', async (e)=>{
+  const editBtn = e.target.closest('.edit-expense');
+  if(editBtn){ openExpenseModal(editBtn.dataset.id); return; }
   const btn = e.target.closest('.delete-expense'); if(!btn) return;
   if(!perms.canExpenses) return;
   if(!confirm('Delete this expense?')) return;
@@ -2061,6 +2344,8 @@ function openFlatModal(flatId){
   if(!f) return;
   ui.editingFlatId = flatId;
   document.getElementById('flatModalTitle').textContent = 'Edit ' + f.label;
+  document.getElementById('flatIdField').hidden = !perms.isAdmin;
+  document.getElementById('flatIdInput').value = f.id;
   document.getElementById('flatOwner').value = f.owner||'';
   document.getElementById('flatTenant').value = f.tenant||'';
   flatModal.classList.remove('hidden');
@@ -2072,9 +2357,33 @@ document.getElementById('saveFlatBtn').addEventListener('click', async ()=>{
   if(!perms.canEditFlats || !ui.editingFlatId) return;
   const owner = document.getElementById('flatOwner').value.trim();
   const tenant = document.getElementById('flatTenant').value.trim();
-  const { error } = await sb.from('ganesh_flats').update({ owner, tenant }).eq('id', ui.editingFlatId);
+  const oldId = ui.editingFlatId;
+
+  // Rename (Super Admin only, field is hidden for everyone else): a plain
+  // `update ganesh_flats set id=...` is safe now that every flat_id foreign
+  // key carries "on update cascade" (supabase-setup.sql), so donations/
+  // pledges/seva sign-ups referencing this flat move with it automatically.
+  let newId = oldId;
+  if(perms.isAdmin){
+    newId = document.getElementById('flatIdInput').value.trim();
+    if(!newId){ showToast('Flat number cannot be blank'); return; }
+    if(newId !== oldId){
+      if(store.flats.some(f=>f.id===newId)){ showToast('A flat with that number already exists'); return; }
+      if(!confirm(`Rename flat ${oldId} to ${newId}? This updates it everywhere it's referenced.`)) return;
+    }
+  }
+
+  const btn = document.getElementById('saveFlatBtn');
+  btn.disabled = true;
+  if(newId !== oldId){
+    const { error: renameErr } = await sb.from('ganesh_flats').update({ id: newId }).eq('id', oldId);
+    if(renameErr){ showToast('Error renaming flat: '+renameErr.message); btn.disabled=false; return; }
+  }
+  const { error } = await sb.from('ganesh_flats').update({ owner, tenant }).eq('id', newId);
+  btn.disabled = false;
   if(error){ showToast('Error: '+error.message); return; }
-  await logActivity('Edited flat', ui.editingFlatId+' — owner: '+(owner||'—')+', tenant: '+(tenant||'—'));
+  if(newId !== oldId) await logActivity('Renamed flat', oldId+' → '+newId);
+  await logActivity('Edited flat', newId+' — owner: '+(owner||'—')+', tenant: '+(tenant||'—'));
   await fetchAllData();
   closeFlatModal();
   renderAll();
@@ -2093,26 +2402,46 @@ document.getElementById('flatsTableBody').addEventListener('click', (e)=>{
    FUND TRANSFERS ("who has how much")
    ============================================================ */
 const transferModal = document.getElementById('transferModal');
-function openTransferModal(){
-  if(!perms.canExpenses){ showToast('Only Super Admin or Treasurer can record transfers'); return; }
+function openTransferModal(transferId){
+  // Editing/deleting an existing transfer is Super Admin only per RLS — only
+  // inserting a new one is also open to Treasurer.
+  if(transferId && !perms.isAdmin){ showToast('Only Super Admin can edit a transfer'); return; }
+  if(!transferId && !perms.canExpenses){ showToast('Only Super Admin or Treasurer can record transfers'); return; }
+  const existing = transferId ? store.fundTransfers.find(x=>x.id===transferId) : null;
+  ui.editingTransferId = existing ? transferId : null;
+  document.getElementById('transferModalTitle').textContent = existing ? 'Edit Transfer' : 'Record Transfer';
   const options = store.profiles.map(p=>`<option value="${p.id}" data-name="${escapeHtml(displayName(p))}">${escapeHtml(displayName(p))}</option>`).join('');
   document.getElementById('transferFrom').innerHTML = options;
   document.getElementById('transferTo').innerHTML = options;
-  document.getElementById('transferFrom').value = profile.id;
+  document.getElementById('transferFrom').value = existing ? existing.from_user : profile.id;
   const otherProfile = store.profiles.find(p=>p.id!==profile.id);
-  document.getElementById('transferTo').value = otherProfile ? otherProfile.id : profile.id;
-  document.getElementById('transferAmount').value = '';
-  document.getElementById('transferDate').value = todayISO();
+  document.getElementById('transferTo').value = existing ? existing.to_user : (otherProfile ? otherProfile.id : profile.id);
+  document.getElementById('transferAmount').value = existing ? existing.amount : '';
+  document.getElementById('transferAmount').dispatchEvent(new Event('input'));
+  document.getElementById('transferDate').value = existing ? existing.date : todayISO();
   document.getElementById('transferDate').dispatchEvent(new Event('change'));
-  document.getElementById('transferNote').value = '';
+  document.getElementById('transferNote').value = existing ? (existing.note||'') : '';
   transferModal.classList.remove('hidden');
 }
-function closeTransferModal(){ transferModal.classList.add('hidden'); }
-document.getElementById('recordTransferBtn').addEventListener('click', openTransferModal);
+function closeTransferModal(){ transferModal.classList.add('hidden'); ui.editingTransferId = null; }
+document.getElementById('recordTransferBtn').addEventListener('click', ()=>openTransferModal());
 document.getElementById('closeTransferModal').addEventListener('click', closeTransferModal);
 document.getElementById('cancelTransferBtn').addEventListener('click', closeTransferModal);
+document.getElementById('recentTransfersList').addEventListener('click', async (e)=>{
+  const editBtn = e.target.closest('.edit-transfer');
+  if(editBtn){ openTransferModal(editBtn.dataset.id); return; }
+  const delBtn = e.target.closest('.delete-transfer');
+  if(!delBtn) return;
+  if(!perms.isAdmin) return;
+  if(!confirm('Delete this transfer?')) return;
+  const t = store.fundTransfers.find(x=>x.id===delBtn.dataset.id);
+  const { error } = await sb.from('ganesh_fund_transfers').delete().eq('id', delBtn.dataset.id);
+  if(error){ showToast('Error: '+error.message); return; }
+  await logActivity('Deleted transfer', t ? (t.from_user_name+' → '+t.to_user_name+' — '+fmtINR(t.amount)) : delBtn.dataset.id);
+  await fetchAllData(); renderAll(); showToast('Transfer deleted');
+});
 document.getElementById('saveTransferBtn').addEventListener('click', async ()=>{
-  if(!perms.canExpenses) return;
+  if(ui.editingTransferId ? !perms.isAdmin : !perms.canExpenses) return;
   const fromId = document.getElementById('transferFrom').value;
   const toId = document.getElementById('transferTo').value;
   const amount = Number(document.getElementById('transferAmount').value);
@@ -2125,18 +2454,28 @@ document.getElementById('saveTransferBtn').addEventListener('click', async ()=>{
   const toP = store.profiles.find(p=>p.id===toId);
   const btn = document.getElementById('saveTransferBtn');
   btn.disabled = true;
-  const { error } = await sb.from('ganesh_fund_transfers').insert({
-    from_user: fromId, from_user_name: displayName(fromP),
-    to_user: toId, to_user_name: displayName(toP),
-    amount, date, note, created_by: profile.id,
-  });
+  const editingId = ui.editingTransferId;
+  let error;
+  if(editingId){
+    ({ error } = await sb.from('ganesh_fund_transfers').update({
+      from_user: fromId, from_user_name: displayName(fromP),
+      to_user: toId, to_user_name: displayName(toP),
+      amount, date, note,
+    }).eq('id', editingId));
+  } else {
+    ({ error } = await sb.from('ganesh_fund_transfers').insert({
+      from_user: fromId, from_user_name: displayName(fromP),
+      to_user: toId, to_user_name: displayName(toP),
+      amount, date, note, created_by: profile.id,
+    }));
+  }
   btn.disabled = false;
   if(error){ showToast('Error: '+error.message); return; }
-  await logActivity('Recorded transfer', displayName(fromP)+' → '+displayName(toP)+' — '+fmtINR(amount));
+  await logActivity(editingId ? 'Edited transfer' : 'Recorded transfer', displayName(fromP)+' → '+displayName(toP)+' — '+fmtINR(amount));
   await fetchAllData();
   closeTransferModal();
   renderAll();
-  showToast('Transfer recorded ✓');
+  showToast(editingId ? 'Transfer updated ✓' : 'Transfer recorded ✓');
 });
 
 /* ============================================================
@@ -2262,24 +2601,49 @@ document.getElementById('saveBudgetBtn').addEventListener('click', async ()=>{
    PRASADAM SEVA
    ============================================================ */
 const sevaDayModal = document.getElementById('sevaDayModal');
-function openSevaDayModal(){
+function openSevaDayModal(dayId){
   if(!perms.isAdmin){ showToast('Only a Super Admin can add seva days'); return; }
-  document.getElementById('sevaDayDate').value = '';
+  const existing = dayId ? store.sevaDays.find(x=>x.id===dayId) : null;
+  ui.editingSevaDayId = existing ? dayId : null;
+  document.getElementById('sevaDayModalTitle').textContent = existing ? 'Edit Seva Day' : 'Add Seva Day';
+  document.getElementById('sevaDayDateLabel').textContent = existing ? 'DATE' : 'FROM DATE';
+  // Editing only ever touches the one existing day — hide the range field so
+  // it can't accidentally batch-generate more days while editing.
+  document.getElementById('sevaDayDateToField').classList.toggle('hidden', !!existing);
+  document.getElementById('sevaDayDate').value = existing ? existing.seva_date : '';
   document.getElementById('sevaDayDateTo').value = '';
-  document.getElementById('sevaDayLabel').value = '';
+  document.getElementById('sevaDayLabel').value = existing ? (existing.label||'') : '';
+  document.getElementById('saveSevaDayBtn').textContent = existing ? 'Save Changes' : 'Add Day';
   sevaDayModal.classList.remove('hidden');
 }
-function closeSevaDayModal(){ sevaDayModal.classList.add('hidden'); }
-document.getElementById('addSevaDayBtn').addEventListener('click', openSevaDayModal);
+function closeSevaDayModal(){ sevaDayModal.classList.add('hidden'); ui.editingSevaDayId = null; }
+document.getElementById('addSevaDayBtn').addEventListener('click', ()=>openSevaDayModal());
 document.getElementById('closeSevaDayModal').addEventListener('click', closeSevaDayModal);
 document.getElementById('cancelSevaDayBtn').addEventListener('click', closeSevaDayModal);
 const MAX_SEVA_DAY_RANGE = 45; // sane cap so a typo in "to date" can't try to insert years of rows
 document.getElementById('saveSevaDayBtn').addEventListener('click', async ()=>{
   if(!perms.isAdmin) return;
   const fromDate = document.getElementById('sevaDayDate').value;
-  const toDateRaw = document.getElementById('sevaDayDateTo').value;
   const label = document.getElementById('sevaDayLabel').value.trim();
-  if(!fromDate){ showToast('Please pick a from date'); return; }
+  if(!fromDate){ showToast('Please pick a date'); return; }
+
+  if(ui.editingSevaDayId){
+    const btn = document.getElementById('saveSevaDayBtn');
+    btn.disabled = true;
+    const { error } = await sb.from('ganesh_prasadam_days')
+      .update({ seva_date: fromDate, label })
+      .eq('id', ui.editingSevaDayId);
+    btn.disabled = false;
+    if(error){ showToast('Error: '+error.message); return; }
+    await logActivity('Edited seva day', fromDate+(label?' — '+label:''));
+    await fetchAllData();
+    closeSevaDayModal();
+    renderAll();
+    showToast('Seva day updated ✓');
+    return;
+  }
+
+  const toDateRaw = document.getElementById('sevaDayDateTo').value;
   const toDate = toDateRaw && toDateRaw > fromDate ? toDateRaw : fromDate;
 
   // Build one row per date in [fromDate, toDate]. For a single day, label is
@@ -2323,6 +2687,12 @@ document.getElementById('saveSevaDayBtn').addEventListener('click', async ()=>{
   showToast(rows.length===1 ? 'Seva day added' : `${addedCount} seva day${addedCount===1?'':'s'} added${skipped?' ('+skipped+' already existed)':''}`);
 });
 document.getElementById('sevaDaysList').addEventListener('click', async (e)=>{
+  const editDayBtn = e.target.closest('.seva-day-edit');
+  if(editDayBtn){
+    if(!perms.isAdmin) return;
+    openSevaDayModal(editDayBtn.dataset.day);
+    return;
+  }
   const delDayBtn = e.target.closest('.seva-day-delete');
   if(delDayBtn){
     if(!perms.isAdmin) return;
@@ -2434,11 +2804,14 @@ function renderActivityLog(){
 
 function openSettingsModal(){
   document.getElementById('settingsName').value = store.settings.committee_name || '';
+  document.getElementById('settingsUpi1').value = store.settings.upi_number_1 || '';
+  document.getElementById('settingsUpi2').value = store.settings.upi_number_2 || '';
   document.getElementById('settingsFlatCount').value = store.flats.length;
   document.getElementById('obYearLabel').textContent = ui.year;
   const obRow = store.openingBalances.find(o=>o.year===ui.year);
   document.getElementById('settingsOpeningBalance').value = obRow ? obRow.amount : '';
   document.getElementById('settingsOpeningBalanceNote').value = obRow ? (obRow.note||'') : '';
+  document.getElementById('clearYearBtnYear').textContent = ui.year;
   renderUsersList();
   renderActivityLog();
   settingsModal.classList.remove('hidden');
@@ -2446,6 +2819,10 @@ function openSettingsModal(){
 function closeSettingsModal(){ settingsModal.classList.add('hidden'); }
 document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
 document.getElementById('settingsBtnMobile').addEventListener('click', openSettingsModal);
+document.getElementById('noOpeningBalanceSettingsLink').addEventListener('click', ()=>{
+  if(!perms.isAdmin){ showToast('Ask your Super Admin to set the opening balance'); return; }
+  openSettingsModal();
+});
 document.getElementById('closeSettingsModal').addEventListener('click', closeSettingsModal);
 document.getElementById('cancelSettingsBtn').addEventListener('click', closeSettingsModal);
 
@@ -2470,10 +2847,12 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
   const btn = document.getElementById('saveSettingsBtn');
   btn.disabled = true;
   const committeeName = document.getElementById('settingsName').value.trim() || 'Ganesh Pooja Committee';
+  const upi1 = document.getElementById('settingsUpi1').value.trim();
+  const upi2 = document.getElementById('settingsUpi2').value.trim();
   const desiredCount = Math.max(1, Math.min(999, Number(document.getElementById('settingsFlatCount').value) || store.flats.length));
   const nameChanged = committeeName !== (store.settings.committee_name||'');
 
-  const { error: settingsErr } = await sb.from('ganesh_settings').update({ committee_name: committeeName, updated_at: new Date().toISOString() }).eq('id', 1);
+  const { error: settingsErr } = await sb.from('ganesh_settings').update({ committee_name: committeeName, upi_number_1: upi1, upi_number_2: upi2, updated_at: new Date().toISOString() }).eq('id', 1);
   if(settingsErr){ showToast('Error: '+settingsErr.message); btn.disabled=false; return; }
   if(nameChanged) await logActivity('Updated committee name', committeeName);
 
@@ -2489,9 +2868,11 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
   } else if(desiredCount < store.flats.length){
     const sorted = [...store.flats].sort((a,b)=>a.id.localeCompare(b.id));
     const removeIds = sorted.slice(desiredCount).map(f=>f.id);
-    const inUse = store.donations.some(d=>removeIds.includes(d.flat_id));
+    const inUse = store.donations.some(d=>removeIds.includes(d.flat_id))
+      || store.pledges.some(p=>removeIds.includes(p.flat_id))
+      || store.sevaSignups.some(s=>removeIds.includes(s.flat_id));
     if(inUse){
-      showToast('Cannot remove flats that have donations recorded');
+      showToast('Cannot remove flats that have donations, pledges, or seva sign-ups recorded');
     } else if(removeIds.length){
       const { error } = await sb.from('ganesh_flats').delete().in('id', removeIds);
       if(error){ showToast('Error removing flats: '+error.message); btn.disabled=false; return; }
@@ -2499,10 +2880,14 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
     }
   }
 
-  const obAmount = Number(document.getElementById('settingsOpeningBalance').value) || 0;
+  const obRaw = document.getElementById('settingsOpeningBalance').value;
+  const obAmount = Number(obRaw) || 0;
   const obNote = document.getElementById('settingsOpeningBalanceNote').value.trim();
   const obRow = store.openingBalances.find(o=>o.year===ui.year);
-  if(obAmount>0 || obRow){
+  // Save whenever the field has anything typed in it (including an explicit
+  // "0" for a brand-new year with no prior row) or a row already exists to
+  // update/clear -- checking obAmount>0 alone silently dropped a genuine 0.
+  if(obRaw !== '' || obRow){
     const { error: obErr } = await sb.from('ganesh_opening_balances').upsert(
       { year: ui.year, amount: obAmount, note: obNote, updated_by: profile.id, updated_at: new Date().toISOString() },
       { onConflict: 'year' }
@@ -2630,7 +3015,7 @@ function buildReportHTML(kind){
   if(kind==='donations'){
     stats = `
       <div class="report-stats">
-        <div class="report-stat"><div class="rlabel">TOTAL COLLECTED</div><div class="rval">${fmtINR(v.totalCollected)}</div></div>
+        <div class="report-stat"><div class="rlabel">TOTAL COLLECTED (INCL. IN-KIND)</div><div class="rval">${fmtINR(v.totalCollected)}</div></div>
         <div class="report-stat"><div class="rlabel">FLATS CONTRIBUTED</div><div class="rval">${v.contributedCount} / ${v.totalFlats}</div></div>
       </div>`;
     body = donationsTableHtml(v);
@@ -2643,7 +3028,7 @@ function buildReportHTML(kind){
   } else if(kind==='annual'){
     stats = `
       <div class="report-stats">
-        <div class="report-stat"><div class="rlabel">TOTAL COLLECTED</div><div class="rval">${fmtINR(v.totalCollected)}</div></div>
+        <div class="report-stat"><div class="rlabel">TOTAL COLLECTED (INCL. IN-KIND)</div><div class="rval">${fmtINR(v.totalCollected)}</div></div>
         <div class="report-stat"><div class="rlabel">TOTAL EXPENSES</div><div class="rval">${fmtINR(v.totalExpenses)}</div></div>
         <div class="report-stat"><div class="rlabel">BALANCE</div><div class="rval">${fmtINR(v.balance)}</div></div>
         <div class="report-stat"><div class="rlabel">FLATS CONTRIBUTED</div><div class="rval">${v.contributedCount} / ${v.totalFlats}</div></div>
@@ -2655,7 +3040,7 @@ function buildReportHTML(kind){
   } else {
     stats = `
       <div class="report-stats">
-        <div class="report-stat"><div class="rlabel">TOTAL COLLECTED</div><div class="rval">${fmtINR(v.totalCollected)}</div></div>
+        <div class="report-stat"><div class="rlabel">TOTAL COLLECTED (INCL. IN-KIND)</div><div class="rval">${fmtINR(v.totalCollected)}</div></div>
         <div class="report-stat"><div class="rlabel">TOTAL EXPENSES</div><div class="rval">${fmtINR(v.totalExpenses)}</div></div>
         <div class="report-stat"><div class="rlabel">BALANCE</div><div class="rval">${fmtINR(v.balance)}</div></div>
         <div class="report-stat"><div class="rlabel">FLATS CONTRIBUTED</div><div class="rval">${v.contributedCount} / ${v.totalFlats}</div></div>
@@ -2793,34 +3178,63 @@ document.getElementById('exportDonationsCsvBtnList').addEventListener('click', e
 document.getElementById('exportExpensesCsvBtnList').addEventListener('click', exportExpensesCSV);
 document.getElementById('exportTxnCsvBtn').addEventListener('click', exportTransactionsCSV);
 
-document.getElementById('clearAllBtn').addEventListener('click', async ()=>{
+// Scoped to the currently-selected year only — the safe default. Deletes
+// donations/expenses/pledges dated in ui.year; other years are untouched.
+document.getElementById('clearYearBtn').addEventListener('click', async ()=>{
   if(!perms.isAdmin) return;
-  if(!confirm('This will permanently delete ALL donations and expenses (flats are kept). Continue?')) return;
-  if(!confirm('Really sure? This cannot be undone.')) return;
-  const NIL = '00000000-0000-0000-0000-000000000000';
-  const [r1, r2] = await Promise.all([
-    sb.from('ganesh_donations').delete().neq('id', NIL),
-    sb.from('ganesh_expenses').delete().neq('id', NIL),
-  ]);
-  if(r1.error || r2.error){ showToast('Error clearing data'); return; }
-  await logActivity('Cleared all data', 'All donations & expenses deleted');
+  const year = ui.year;
+  if(!confirm(`This will permanently delete all donations, expenses, and pledges dated in ${year} (other years are untouched, flats are kept). Continue?`)) return;
+  if(!confirm(`Really sure? This cannot be undone for ${year}.`)) return;
+  const donIds = store.donations.filter(d=>yearOf(d.date)===year).map(d=>d.id);
+  const expIds = store.expenses.filter(e=>yearOf(e.date)===year).map(e=>e.id);
+  const pledgeIds = store.pledges.filter(p=>yearOf(p.pledged_date)===year).map(p=>p.id);
+  const jobs = [];
+  if(donIds.length) jobs.push(sb.from('ganesh_donations').delete().in('id', donIds));
+  if(expIds.length) jobs.push(sb.from('ganesh_expenses').delete().in('id', expIds));
+  if(pledgeIds.length) jobs.push(sb.from('ganesh_pledges').delete().in('id', pledgeIds));
+  if(!jobs.length){ showToast('Nothing to clear for '+year); return; }
+  const results = await Promise.all(jobs);
+  if(results.some(r=>r.error)){ showToast('Error clearing data'); return; }
+  await logActivity('Cleared year data', year+' — donations, expenses & pledges deleted');
   await fetchAllData();
   closeSettingsModal();
   renderAll();
-  showToast('All transaction data cleared');
+  showToast(year+' data cleared');
+});
+
+// Deletes every year's donations/expenses/pledges — deliberately harder to
+// trigger than the scoped version above, since this is the mistake that
+// wipes years of financial history in one click.
+document.getElementById('clearAllYearsBtn').addEventListener('click', async ()=>{
+  if(!perms.isAdmin) return;
+  if(!confirm('This deletes donations, expenses, and pledges for EVERY year, not just the current one. This is almost never what you want — use "Clear <Year>" above instead unless you are certain. Continue?')) return;
+  const typed = prompt('This cannot be undone. Type ALL YEARS (in capitals) to confirm you want to permanently delete every year\'s financial history:');
+  if(typed !== 'ALL YEARS'){ showToast('Cancelled — text did not match'); return; }
+  const NIL = '00000000-0000-0000-0000-000000000000';
+  const results = await Promise.all([
+    sb.from('ganesh_donations').delete().neq('id', NIL),
+    sb.from('ganesh_expenses').delete().neq('id', NIL),
+    sb.from('ganesh_pledges').delete().neq('id', NIL),
+  ]);
+  if(results.some(r=>r.error)){ showToast('Error clearing data'); return; }
+  await logActivity('Cleared ALL YEARS', 'All donations, expenses & pledges deleted across every year');
+  await fetchAllData();
+  closeSettingsModal();
+  renderAll();
+  showToast('All years cleared');
 });
 
 /* ---------- close modals on overlay click ---------- */
 const ALL_MODALS = [donationModal, pledgeModal, bulkImportModal, expenseModal, flatModal, settingsModal, sevaDayModal, sevaSignupModal, transferModal, budgetModal, compareYearsModal];
 ALL_MODALS.forEach(modal=>{
-  modal.addEventListener('click', (e)=>{ if(e.target===modal){ modal.classList.add('hidden'); if(modal===donationModal) ui.pledgeBeingFulfilled = null; } });
+  modal.addEventListener('click', (e)=>{ if(e.target===modal){ modal.classList.add('hidden'); if(modal===donationModal){ ui.pledgeBeingFulfilled = null; ui.editingDonationId = null; } if(modal===expenseModal) ui.editingExpenseId = null; if(modal===transferModal) ui.editingTransferId = null; if(modal===sevaDayModal) ui.editingSevaDayId = null; } });
 });
 
 /* ---------- Escape key closes whichever modal is open ---------- */
 document.addEventListener('keydown', (e)=>{
   if(e.key !== 'Escape') return;
   const open = ALL_MODALS.find(m => !m.classList.contains('hidden'));
-  if(open){ open.classList.add('hidden'); if(open===donationModal) ui.pledgeBeingFulfilled = null; }
+  if(open){ open.classList.add('hidden'); if(open===donationModal){ ui.pledgeBeingFulfilled = null; ui.editingDonationId = null; } if(open===expenseModal) ui.editingExpenseId = null; if(open===transferModal) ui.editingTransferId = null; if(open===sevaDayModal) ui.editingSevaDayId = null; }
 });
 
 /* ---------- offline / online awareness ---------- */

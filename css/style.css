@@ -78,6 +78,8 @@ button{cursor:pointer}
 .btn-ghost{border:1px solid var(--slate-200);background:var(--slate-50);color:var(--slate-600);border-radius:10px;padding:8px 14px;font-size:13px}
 .btn-danger-outline{border:1px solid #FCA5A5;background:#FEF2F2;color:var(--red);border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700}
 
+.banner-warn{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:12px;padding:12px 16px;font-size:13px;font-weight:600;margin-bottom:16px}
+.banner-warn .btn-link{border:none;background:none;color:#92400E;font-weight:800;text-decoration:underline;font-size:13px;padding:0;flex-shrink:0}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:20px}
 .stat-card{background:#fff;border:1px solid var(--slate-200);border-radius:16px;padding:18px}
 .stat-label{font-size:13px;color:var(--slate-600);font-weight:600;margin-bottom:8px}
@@ -210,6 +212,8 @@ button{cursor:pointer}
 .field textarea{resize:none}
 .hint{font-size:12px;color:var(--slate-400);margin-top:6px}
 .hint.date-confirm{color:var(--orange-dark);font-weight:700;min-height:15px}
+.hint.date-confirm.warn{color:var(--red)}
+.hint.amount-confirm{color:var(--orange-dark);font-weight:700;min-height:15px}
 .amount-input{display:flex;align-items:center;gap:6px;border:1px solid var(--slate-200);border-radius:12px;padding:8px 14px}
 .amount-input span{font-size:22px;font-weight:800;color:var(--slate-400)}
 .amount-input input{border:none;outline:none;font-size:24px;font-weight:800;color:var(--ink);width:100%}
@@ -395,6 +399,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .seva-day-title{font-size:15px;font-weight:800}
 .seva-day-sub{font-size:12px;color:var(--slate-400);font-weight:600}
 .seva-day-delete{border:none;background:var(--slate-100);color:var(--red);width:28px;height:28px;border-radius:8px;flex-shrink:0}
+.seva-day-actions{display:flex;gap:6px;flex-shrink:0}
+.seva-day-edit{border:none;background:var(--slate-100);color:var(--slate-400);width:28px;height:28px;border-radius:8px;flex-shrink:0}
 .seva-sessions{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media (max-width:599px){.seva-sessions{grid-template-columns:1fr}}
 .seva-session{border:1px solid var(--slate-100);border-radius:12px;padding:12px}

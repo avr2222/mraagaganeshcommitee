@@ -26,6 +26,12 @@ create table if not exists public.ganesh_settings (
 insert into public.ganesh_settings (id, committee_name) values (1, 'Ganesh Pooja Committee')
   on conflict (id) do nothing;
 
+-- Migration: UPI numbers shown at the bottom of the "Copy This Year's
+-- Donations" WhatsApp message, editable from Settings so the committee can
+-- update them themselves each year without a code change.
+alter table public.ganesh_settings add column if not exists upi_number_1 text not null default '';
+alter table public.ganesh_settings add column if not exists upi_number_2 text not null default '';
+
 -- ---------- flats ----------
 create table if not exists public.ganesh_flats (
   id text primary key,          -- e.g. 'A001', 'A101'
@@ -123,6 +129,25 @@ create table if not exists public.ganesh_prasadam_signups (
   created_by uuid references public.ganesh_profiles(id),
   created_at timestamptz not null default now()
 );
+
+-- Migration: allow a flat's id (e.g. 'A001') to be renamed from the flat
+-- edit modal. flat_id foreign keys were originally "on delete restrict"
+-- with no "on update" clause, which defaults to "no action" — a rename
+-- would fail wherever that flat_id is already referenced. Adding
+-- "on update cascade" lets a rename propagate automatically to every
+-- linked donation/pledge/seva sign-up. Safe to re-run: drops and
+-- recreates each constraint under its default auto-generated name.
+alter table public.ganesh_donations drop constraint if exists ganesh_donations_flat_id_fkey;
+alter table public.ganesh_donations add constraint ganesh_donations_flat_id_fkey
+  foreign key (flat_id) references public.ganesh_flats(id) on delete restrict on update cascade;
+
+alter table public.ganesh_pledges drop constraint if exists ganesh_pledges_flat_id_fkey;
+alter table public.ganesh_pledges add constraint ganesh_pledges_flat_id_fkey
+  foreign key (flat_id) references public.ganesh_flats(id) on delete restrict on update cascade;
+
+alter table public.ganesh_prasadam_signups drop constraint if exists ganesh_prasadam_signups_flat_id_fkey;
+alter table public.ganesh_prasadam_signups add constraint ganesh_prasadam_signups_flat_id_fkey
+  foreign key (flat_id) references public.ganesh_flats(id) on delete restrict on update cascade;
 
 -- ---------- fund transfers ("who has how much" cash-in-hand) ----------
 create table if not exists public.ganesh_fund_transfers (

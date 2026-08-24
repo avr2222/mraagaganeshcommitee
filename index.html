@@ -165,6 +165,7 @@
           </div>
         </div>
         <div class="head-actions">
+          <button class="btn btn-ghost" id="copyYearDonationsBtn">📋 Copy This Year's Donations</button>
           <button class="btn btn-ghost" id="printAnnualReportBtn">🖨 Print Annual Report</button>
           <button class="btn btn-orange" id="addDonationBtnDash">+ Add Donation</button>
           <button class="btn btn-red" id="addExpenseBtnDash">+ Add Expense</button>
@@ -182,11 +183,17 @@
         </div>
       </div>
 
+      <div class="banner-warn hidden" id="noOpeningBalanceBanner">
+        ⚠ No opening balance set for <span id="noOpeningBalanceYear"></span> yet — Current Balance below may not reflect cash carried over from last year.
+        <button class="btn-link" id="noOpeningBalanceSettingsLink">Set it in Settings</button>
+      </div>
+
       <div id="dashHasData">
         <div class="stat-grid">
           <div class="stat-card">
             <div class="stat-label">Total Collected</div>
             <div class="stat-value green" id="statCollected">₹0</div>
+            <div class="hint hidden" id="statInKindHint" style="margin-top:2px"></div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Total Expenses</div>
@@ -296,6 +303,9 @@
         <div>
           <h1>Flats</h1>
           <div class="subtle" id="flatsCount">0 units</div>
+        </div>
+        <div class="head-actions admin-only" id="fillOwnerNamesField">
+          <button class="btn btn-flat" id="fillOwnerNamesBtn" title="Fill blank Owner names using each flat's earliest recorded donation">👤 Fill Owner Names From Donations</button>
         </div>
       </div>
       <div class="toolbar">
@@ -468,7 +478,7 @@
   <div class="modal-overlay hidden" id="donationModal">
     <div class="modal">
       <div class="modal-head">
-        <div class="modal-title">Add Donation</div>
+        <div class="modal-title" id="donationModalTitle">Add Donation</div>
         <button class="modal-close" id="closeDonationModal" aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
@@ -495,6 +505,7 @@
             <span>₹</span>
             <input type="number" id="donAmount" placeholder="0" min="0">
           </div>
+          <div class="hint amount-confirm" id="donAmountHint"></div>
         </div>
         <div class="field" id="donModeField">
           <label>PAYMENT MODE</label>
@@ -523,6 +534,7 @@
             <span>₹</span>
             <input type="number" id="donItemValue" placeholder="0 (leave blank if unknown)" min="0">
           </div>
+          <div class="hint amount-confirm" id="donItemValueHint"></div>
         </div>
         <div class="field">
           <label>DATE</label>
@@ -570,6 +582,7 @@
             <span>₹</span>
             <input type="number" id="pledgeAmount" placeholder="0" min="0">
           </div>
+          <div class="hint amount-confirm" id="pledgeAmountHint"></div>
         </div>
         <div class="field">
           <label>DATE PLEDGED</label>
@@ -649,7 +662,7 @@
   <div class="modal-overlay hidden" id="expenseModal">
     <div class="modal">
       <div class="modal-head">
-        <div class="modal-title">Add Expense</div>
+        <div class="modal-title" id="expenseModalTitle">Add Expense</div>
         <button class="modal-close" id="closeExpenseModal" aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
@@ -668,6 +681,7 @@
             <span>₹</span>
             <input type="number" id="expAmount" placeholder="0" min="0">
           </div>
+          <div class="hint amount-confirm" id="expAmountHint"></div>
         </div>
         <div class="field">
           <label>PAYMENT MODE</label>
@@ -711,6 +725,11 @@
         <button class="modal-close" id="closeFlatModal" aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
+        <div class="field" id="flatIdField" hidden>
+          <label>FLAT NUMBER</label>
+          <input type="text" id="flatIdInput" placeholder="e.g. A001">
+          <div class="hint">Super Admin only. Renaming updates this flat everywhere it's referenced — donations, pledges, and seva sign-ups move with it automatically.</div>
+        </div>
         <div class="field">
           <label>OWNER NAME</label>
           <input type="text" id="flatOwner" placeholder="Owner name">
@@ -763,6 +782,13 @@
           <div class="hint">Changing this adds or removes flats from the end of the list, following the G+3 pattern (A001–A018 Ground, A101–A118 1st floor, A201–A218 2nd, A301–A318 3rd).</div>
         </div>
 
+        <div class="field admin-only" id="settingsUpiField">
+          <label>UPI PAYMENT NUMBERS (FOR DONATION MESSAGES)</label>
+          <input type="text" id="settingsUpi1" placeholder="e.g. 9008023884" style="margin-bottom:8px">
+          <input type="text" id="settingsUpi2" placeholder="Second number (optional)">
+          <div class="hint">Shown at the bottom of "Copy This Year's Donations" so residents know where to pay. Leave the second one blank if there's only one number.</div>
+        </div>
+
         <div class="field admin-only" id="settingsUsersField">
           <label>USERS &amp; ROLES</label>
           <div id="usersList" class="users-list"></div>
@@ -794,7 +820,10 @@
 
         <div class="field admin-only" id="settingsDangerField">
           <label>DANGER ZONE</label>
-          <button class="btn btn-danger-outline" id="clearAllBtn">Clear All Donations &amp; Expenses</button>
+          <button class="btn btn-danger-outline" id="clearYearBtn">Clear <span id="clearYearBtnYear"></span> Donations &amp; Expenses</button>
+          <div class="hint">Only deletes the year currently selected. Other years are untouched.</div>
+          <button class="btn btn-danger-outline" id="clearAllYearsBtn" style="margin-top:8px">Clear ALL Years (every donation &amp; expense, forever)</button>
+          <div class="hint">This deletes every year's financial history, not just the current one. You'll be asked to type a confirmation phrase.</div>
         </div>
       </div>
       <div class="modal-actions">
@@ -826,6 +855,7 @@
             <span>₹</span>
             <input type="number" id="transferAmount" placeholder="0" min="0">
           </div>
+          <div class="hint amount-confirm" id="transferAmountHint"></div>
         </div>
         <div class="field">
           <label>DATE</label>
@@ -911,16 +941,16 @@
   <div class="modal-overlay hidden" id="sevaDayModal">
     <div class="modal">
       <div class="modal-head">
-        <div class="modal-title">Add Seva Day</div>
+        <div class="modal-title" id="sevaDayModalTitle">Add Seva Day</div>
         <button class="modal-close" id="closeSevaDayModal" aria-label="Close">✕</button>
       </div>
       <div class="modal-body">
         <div class="field">
-          <label>FROM DATE</label>
+          <label id="sevaDayDateLabel">FROM DATE</label>
           <input type="date" id="sevaDayDate">
           <div class="hint date-confirm" id="sevaDayDateHint"></div>
         </div>
-        <div class="field">
+        <div class="field" id="sevaDayDateToField">
           <label>TO DATE (OPTIONAL)</label>
           <input type="date" id="sevaDayDateTo">
           <div class="hint date-confirm" id="sevaDayDateToHint"></div>
