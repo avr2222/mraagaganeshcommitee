@@ -709,9 +709,17 @@ function renderNav(){
 
 function renderYearSelect(){
   const sel = document.getElementById('yearSelect');
+  // Pull years from every table that carries a year, not just donations/
+  // expenses -- a year with (say) only an opening balance set, or only
+  // pledges/seva days recorded, still needs to be selectable, otherwise
+  // it silently disappears from the dropdown even though its data exists.
   const years = new Set([String(new Date().getFullYear())]);
   store.donations.forEach(d=>years.add(yearOf(d.date)));
   store.expenses.forEach(e=>years.add(yearOf(e.date)));
+  store.pledges.forEach(p=>years.add(yearOf(p.pledged_date)));
+  store.openingBalances.forEach(o=>years.add(String(o.year)));
+  store.fundTransfers.forEach(t=>years.add(yearOf(t.created_at)));
+  store.sevaDays.forEach(d=>years.add(yearOf(d.seva_date)));
   years.add(ui.year);
   const sorted = Array.from(years).filter(Boolean).sort((a,b)=>b.localeCompare(a));
   sel.innerHTML = sorted.map(y=>`<option value="${y}"${y===ui.year?' selected':''}>${y}</option>`).join('');
