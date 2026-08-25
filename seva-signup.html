@@ -21,13 +21,21 @@
   .pub-day-list{display:flex;flex-direction:column;gap:16px}
   .inline-form{display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--slate-200);gap:8px;flex-direction:column}
   .inline-form.open{display:flex}
-  .inline-form select,.inline-form input{width:100%;padding:9px 10px;border:1px solid var(--slate-200);border-radius:9px;font-size:13px}
+  .inline-form select,.inline-form input{width:100%;padding:9px 10px;border:1px solid var(--slate-200);border-radius:9px;font-size:13px;transition:border-color .15s ease,box-shadow .15s ease}
+  .inline-form select:focus,.inline-form input:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-light)}
   .inline-form-actions{display:flex;gap:8px;margin-top:2px}
-  .inline-form-actions button{flex:1;padding:9px;border-radius:9px;border:none;font-size:13px;font-weight:700;cursor:pointer}
+  .inline-form-actions button{flex:1;padding:9px;border-radius:9px;border:none;font-size:13px;font-weight:700;cursor:pointer;transition:filter .15s ease,transform .1s ease}
   .btn-submit{background:var(--orange);color:#fff}
   .btn-cancel{background:var(--slate-100);color:var(--slate-600)}
+  @media (hover:hover){ .inline-form-actions button:hover{filter:brightness(.95)} }
+  .inline-form-actions button:active{transform:translateY(1px)}
   .pub-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;
-    padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.2)}
+    padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.2);
+    animation:toastIn .25s cubic-bezier(.2,.8,.3,1)}
+  @keyframes toastIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+  .pub-empty-icon{width:52px;height:52px;border-radius:50%;margin:0 auto 12px;font-size:22px;
+    background:radial-gradient(circle at 30% 25%,#FFEDD5 0%,var(--orange-light) 70%);
+    display:flex;align-items:center;justify-content:center}
   .pub-footer{text-align:center;margin-top:28px;font-size:11.5px;color:var(--slate-400)}
 </style>
 </head>
@@ -50,7 +58,10 @@
   </div>
 
   <div id="pubLoading" class="pub-loading">Loading seva days…</div>
-  <div id="pubEmpty" class="pub-empty hidden">No seva days have been added yet. Please check back soon.</div>
+  <div id="pubEmpty" class="pub-empty hidden">
+    <div class="pub-empty-icon">🙏</div>
+    No seva days have been added yet. Please check back soon.
+  </div>
   <div id="pubDayList" class="pub-day-list"></div>
 
   <div class="pub-footer">Ganesh Pooja Expense Portal</div>
