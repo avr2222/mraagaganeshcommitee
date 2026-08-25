@@ -1,6 +1,6 @@
 :root{
   --orange:#F97316; --orange-dark:#EA580C; --orange-light:#FFF7ED;
-  --red:#DC2626; --green:#16A34A; --blue:#2563EB; --amber:#D97706;
+  --red:#DC2626; --green:#16A34A; --blue:#2563EB; --amber:#D97706; --teal:#0D9488;
   --ink:#1E293B; --slate-600:#475569; --slate-400:#94A3B8;
   --slate-300:#CBD5E1; --slate-200:#E2E8F0; --slate-100:#F1F5F9; --slate-50:#F8FAFC;
 }
@@ -88,6 +88,7 @@ button{cursor:pointer}
 .stat-value.red,.red{color:var(--red)}
 .stat-value.blue,.blue{color:var(--blue)}
 .stat-value.orange,.orange{color:var(--orange)}
+.stat-value.teal,.teal{color:var(--teal)}
 
 .panel{background:#fff;border:1px solid var(--slate-200);border-radius:16px;padding:20px;margin-bottom:20px}
 .panel-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px}
@@ -231,6 +232,15 @@ button{cursor:pointer}
 .modal-actions{display:flex;gap:10px;margin-top:20px}
 .modal-actions .btn{flex:1}
 
+.confirm-modal{max-width:380px;text-align:center;padding:28px 24px 24px}
+.confirm-modal-icon{width:52px;height:52px;border-radius:50%;background:#FEE2E2;color:var(--red);
+  display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 14px}
+.confirm-modal-title{font-size:17px;margin-bottom:8px}
+.confirm-modal-msg{font-size:13.5px;color:var(--slate-600);line-height:1.5;margin:0}
+.confirm-modal-typed{text-align:left;margin-top:16px}
+.confirm-modal-typed label{font-size:10.5px}
+.confirm-modal-actions{margin-top:22px}
+
 .toast{
   position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
   padding:12px 20px;border-radius:12px;font-size:14px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:60;
@@ -333,6 +343,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
      height so the banner stays visible instead of being hidden underneath. */
   body.is-offline .topbar{top:34px}
   body.is-offline .content{padding-top:114px}
+  .global-year-label{display:none}
+  .global-year-box{padding:8px 9px}
+  #yearSelect{min-width:0}
 }
 @media (min-width:900px){
   .cards-list{display:none}
@@ -340,7 +353,10 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 
 /* Global search */
 .global-search-wrap{position:relative;margin-bottom:18px}
-.global-search-box{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--slate-200);border-radius:12px;padding:10px 12px;color:var(--slate-400)}
+.global-bar-row{display:flex;align-items:center;gap:10px}
+.global-search-box{flex:1;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--slate-200);border-radius:12px;padding:10px 12px;color:var(--slate-400)}
+.global-year-box{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--slate-200);border-radius:12px;padding:8px 12px;flex-shrink:0}
+.global-year-label{font-size:11px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--slate-400)}
 .global-search-box input{flex:1;border:none;outline:none;font-size:13.5px;color:var(--ink);background:transparent}
 .global-search-box input::placeholder{color:var(--slate-400)}
 .global-search-clear{border:none;background:var(--slate-100);color:var(--slate-400);width:20px;height:20px;border-radius:50%;font-size:11px;cursor:pointer;flex-shrink:0}

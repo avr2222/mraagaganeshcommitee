@@ -146,10 +146,16 @@
   <main class="content">
 
     <div class="global-search-wrap">
-      <div class="global-search-box">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-        <input type="text" id="globalSearchInput" placeholder="Search donations, expenses, pledges, flats…" autocomplete="off">
-        <button class="global-search-clear hidden" id="globalSearchClear" aria-label="Clear search">✕</button>
+      <div class="global-bar-row">
+        <div class="global-search-box">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="globalSearchInput" placeholder="Search donations, expenses, pledges, flats…" autocomplete="off">
+          <button class="global-search-clear hidden" id="globalSearchClear" aria-label="Clear search">✕</button>
+        </div>
+        <div class="global-year-box" title="Switch year — applies to every screen">
+          <span class="global-year-label">Year</span>
+          <select id="yearSelect"></select>
+        </div>
       </div>
       <div class="global-search-results hidden" id="globalSearchResults"></div>
     </div>
@@ -161,7 +167,6 @@
           <div class="eyebrow">GANESH POOJA COMMITTEE</div>
           <div class="title-row">
             <h1 id="dashTitle">Ganesh Pooja</h1>
-            <select id="yearSelect"></select>
           </div>
         </div>
         <div class="head-actions">
@@ -180,6 +185,21 @@
         <div class="pledge-summary">
           <div class="pledge-summary-amt" id="pledgeSummaryAmt">₹0</div>
           <div class="pledge-summary-sub" id="pledgeSummarySub">0 pledges awaiting follow-up</div>
+        </div>
+      </div>
+
+      <!-- Advances already given (e.g. priest's day-1 advance) that still owe
+           a balance later. This money is committed but hasn't left the
+           account yet, so it's called out separately from Current Balance
+           so spending decisions account for what's already promised. -->
+      <div class="panel hidden" id="pendingBalancePanel">
+        <div class="panel-row">
+          <div class="panel-title">Committed — Balance Still Owed</div>
+          <button class="btn btn-ghost" id="viewPendingBalanceBtn">View Expenses</button>
+        </div>
+        <div class="pledge-summary">
+          <div class="pledge-summary-amt" id="pendingBalanceAmt" style="color:var(--red)">₹0</div>
+          <div class="pledge-summary-sub" id="pendingBalanceSub">0 expenses with a balance still due</div>
         </div>
       </div>
 
@@ -203,6 +223,11 @@
             <div class="stat-label">Current Balance</div>
             <div class="stat-value blue" id="statBalance">₹0</div>
             <div class="hint hidden" id="statBalanceHint" style="margin-top:2px"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Available to Spend</div>
+            <div class="stat-value" id="statAvailable">₹0</div>
+            <div class="hint hidden" id="statAvailableHint" style="margin-top:2px"></div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Flats Contributed</div>
@@ -1035,6 +1060,24 @@
       <div class="modal-actions">
         <button class="btn btn-flat" id="cancelSevaSignupBtn">Cancel</button>
         <button class="btn btn-orange" id="saveSevaSignupBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Themed confirm dialog, replaces window.confirm()/prompt() for delete
+       and other risky actions -->
+  <div class="modal-overlay hidden" id="confirmModal">
+    <div class="modal confirm-modal">
+      <div class="confirm-modal-icon" id="confirmModalIcon">🗑</div>
+      <div class="modal-title confirm-modal-title" id="confirmModalTitle">Are you sure?</div>
+      <p class="confirm-modal-msg" id="confirmModalMessage"></p>
+      <div class="field confirm-modal-typed hidden" id="confirmModalTypedWrap">
+        <label id="confirmModalTypedLabel">TYPE TO CONFIRM</label>
+        <input type="text" id="confirmModalTypedInput" autocomplete="off">
+      </div>
+      <div class="modal-actions confirm-modal-actions">
+        <button class="btn btn-flat" id="confirmModalCancelBtn">Cancel</button>
+        <button class="btn btn-red" id="confirmModalOkBtn">Delete</button>
       </div>
     </div>
   </div>

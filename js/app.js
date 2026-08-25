@@ -441,6 +441,22 @@ function computeView(){
   const openingBalance = openingBalanceRow ? Number(openingBalanceRow.amount)||0 : 0;
   const balance = openingBalance + cashCollected - totalExpenses;
 
+  // ---- Committed but not yet paid: advances already given (e.g. priest's
+  // day-1 advance) that still owe a balance later. This money is already
+  // "spoken for" even though it hasn't left the account yet, so treating
+  // the full Current Balance as free-to-spend would overstate what's
+  // actually safe to commit to new expenses.
+  const pendingRows = expenses.filter(e=>{
+    const pt = e.payment_type || 'full';
+    if(pt==='full' || e.total_expected==null) return false;
+    return (Number(e.total_expected) - e.amount) > 0;
+  }).map(e=>({
+    id: e.id, category: e.category, description: e.description,
+    due: Number(e.total_expected) - e.amount,
+  }));
+  const pendingBalanceDue = pendingRows.reduce((s,r)=>s+r.due, 0);
+  const availableToSpend = balance - pendingBalanceDue;
+
   const contributedIds = new Set(donations.map(d=>d.flat_id));
   const totalFlats = store.flats.length;
   const contributedCount = store.flats.filter(f=>contributedIds.has(f.id)).length;
@@ -640,6 +656,7 @@ function computeView(){
 
   return {
     totalCollected, cashCollected, inKindValue, totalExpenses, balance, openingBalance,
+    pendingRows, pendingBalanceDue, availableToSpend,
     contributedCount, notContributedCount, totalFlats, contributedPct, maxIE,
     recentTransactions, filteredTransactions, donationsSorted, expensesSorted,
     categoryBreakdown, collectedByBreakdown, recordedByBreakdown,
@@ -727,6 +744,25 @@ function renderDashboard(v){
   balHintParts.push('cash only — excludes in-kind value');
   balHint.classList.remove('hidden');
   balHint.textContent = balHintParts.join(' · ');
+
+  // "Available to Spend" = Current Balance minus advances already given
+  // that still owe a balance later -- money that's already committed even
+  // though it hasn't left the account yet, so it shouldn't read as free.
+  const availEl = document.getElementById('statAvailable');
+  availEl.textContent = fmtINR(v.availableToSpend);
+  availEl.classList.remove('green','red','blue','orange','teal');
+  availEl.classList.add(v.availableToSpend < 0 ? 'red' : 'teal');
+  const availHint = document.getElementById('statAvailableHint');
+  availHint.classList.toggle('hidden', !v.pendingBalanceDue);
+  availHint.textContent = v.pendingBalanceDue
+    ? 'After '+fmtINR(v.pendingBalanceDue)+' committed (advances owing a balance)'
+    : '';
+
+  const pendingPanel = document.getElementById('pendingBalancePanel');
+  pendingPanel.classList.toggle('hidden', !v.pendingRows.length);
+  document.getElementById('pendingBalanceAmt').textContent = fmtINR(v.pendingBalanceDue);
+  document.getElementById('pendingBalanceSub').textContent =
+    v.pendingRows.length + ' expense' + (v.pendingRows.length===1?'':'s') + ' with a balance still due';
 
   document.getElementById('flatsProgressTitle').textContent = v.contributedCount+' / '+v.totalFlats+' Flats Contributed';
   document.getElementById('flatsProgressBar').style.width = v.contributedPct+'%';
@@ -1379,6 +1415,63 @@ function showToast(msg){
 }
 
 /* ============================================================
+   THEMED CONFIRM DIALOG -- replaces window.confirm()/prompt() for
+   delete and other risky actions. Usage:
+     if(!(await showConfirm('Delete this donation?'))) return;
+   Pass { requireText:'ALL YEARS' } to force the user to type an exact
+   phrase before the confirm button enables (for the scariest actions).
+   ============================================================ */
+function showConfirm(message, opts={}){
+  return new Promise(resolve=>{
+    const overlay = document.getElementById('confirmModal');
+    const okBtn = document.getElementById('confirmModalOkBtn');
+    const cancelBtn = document.getElementById('confirmModalCancelBtn');
+    const typedWrap = document.getElementById('confirmModalTypedWrap');
+    const typedInput = document.getElementById('confirmModalTypedInput');
+    const typedLabel = document.getElementById('confirmModalTypedLabel');
+
+    document.getElementById('confirmModalIcon').textContent = opts.icon || (opts.danger===false ? '❓' : '🗑');
+    document.getElementById('confirmModalTitle').textContent = opts.title || (opts.danger===false ? 'Please confirm' : 'Delete this?');
+    document.getElementById('confirmModalMessage').textContent = message;
+    okBtn.textContent = opts.okLabel || (opts.danger===false ? 'Confirm' : 'Delete');
+    okBtn.className = 'btn ' + (opts.danger===false ? 'btn-orange' : 'btn-red');
+
+    const needsTyped = !!opts.requireText;
+    typedWrap.classList.toggle('hidden', !needsTyped);
+    typedInput.value = '';
+    okBtn.disabled = needsTyped;
+    if(needsTyped){ typedLabel.textContent = `Type ${opts.requireText} to confirm`; }
+
+    const onTypedInput = ()=>{ okBtn.disabled = typedInput.value.trim() !== opts.requireText; };
+    if(needsTyped) typedInput.addEventListener('input', onTypedInput);
+
+    overlay.classList.remove('hidden');
+    setTimeout(()=>{ (needsTyped ? typedInput : okBtn).focus(); }, 10);
+
+    const cleanup = (result)=>{
+      overlay.classList.add('hidden');
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('mousedown', onOverlay);
+      document.removeEventListener('keydown', onKey);
+      if(needsTyped) typedInput.removeEventListener('input', onTypedInput);
+      resolve(result);
+    };
+    const onOk = ()=>{ if(!okBtn.disabled) cleanup(true); };
+    const onCancel = ()=>cleanup(false);
+    const onOverlay = (e)=>{ if(e.target===overlay) cleanup(false); };
+    const onKey = (e)=>{
+      if(e.key==='Escape'){ cleanup(false); }
+      else if(e.key==='Enter' && !needsTyped){ cleanup(true); }
+    };
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('mousedown', onOverlay);
+    document.addEventListener('keydown', onKey);
+  });
+}
+
+/* ============================================================
    NAVIGATION
    ============================================================ */
 function goScreen(s){ ui.screen = s; renderAll(); window.scrollTo(0,0); }
@@ -1388,6 +1481,7 @@ document.querySelectorAll('.nav-btn, .bn-btn').forEach(btn=>{
 document.getElementById('viewFlatsBtn').addEventListener('click', ()=>{ ui.flatsFilter='all'; goScreen('flats'); });
 document.getElementById('viewAllTxnBtn').addEventListener('click', ()=> goScreen('transactions'));
 document.getElementById('viewSevaBtn').addEventListener('click', ()=> goScreen('prasadam'));
+document.getElementById('viewPendingBalanceBtn').addEventListener('click', ()=> goScreen('expenses'));
 
 function renderSevaProgress(v){
   const panel = document.getElementById('sevaProgressPanel');
@@ -1438,7 +1532,7 @@ document.getElementById('fillOwnerNamesBtn').addEventListener('click', async ()=
     if(flatDonations.length) updates.push({ id:f.id, owner: flatDonations[0].name });
   });
   if(!updates.length){ showToast('No donations on file to fill names from yet'); return; }
-  if(!confirm(`Fill in Owner for ${updates.length} flat(s) using their earliest donation? You can still edit any of these by hand afterward.`)) return;
+  if(!(await showConfirm(`Fill in Owner for ${updates.length} flat(s) using their earliest donation? You can still edit any of these by hand afterward.`, { danger:false, okLabel:'Fill Names', icon:'✏️' }))) return;
   const btn = document.getElementById('fillOwnerNamesBtn');
   btn.disabled = true;
   let ok = 0;
@@ -1540,14 +1634,14 @@ function buildYearDonationsMessage(){
     return { message: null, count: 0 };
   }
 
-  // Sort by flat number ascending; donations with no flat (Unknown/Vacated
-  // Tenant) sort to the end. Multiple donations from the same flat keep
-  // their original recorded order.
+  // Unknown-flat donors (guests) come first, then known flats sorted by
+  // flat number ascending. Multiple donations from the same flat/guest
+  // keep their original recorded order.
   const sorted = [...yearDonations].sort((a,b)=>{
     const fa = a.flat_id ? store.flats.find(x=>x.id===a.flat_id) : null;
     const fb = b.flat_id ? store.flats.find(x=>x.id===b.flat_id) : null;
-    const na = fa ? Number(flatNumberOf(fa.label)) : Infinity;
-    const nb = fb ? Number(flatNumberOf(fb.label)) : Infinity;
+    const na = fa ? Number(flatNumberOf(fa.label)) : -Infinity;
+    const nb = fb ? Number(flatNumberOf(fb.label)) : -Infinity;
     if(na !== nb) return na - nb;
     return new Date(a.created_at) - new Date(b.created_at);
   });
@@ -1810,7 +1904,7 @@ function markPledgeReceived(pledgeId){
 }
 async function deletePledge(pledgeId){
   if(!perms.canDonations){ showToast('You do not have permission to remove pledges'); return; }
-  if(!confirm('Remove this pledge? This cannot be undone.')) return;
+  if(!(await showConfirm('Remove this pledge? This cannot be undone.', { title:'Remove pledge?' }))) return;
   const { error } = await sb.from('ganesh_pledges').delete().eq('id', pledgeId);
   if(error){ showToast('Error: '+error.message); return; }
   await logActivity('Removed pledge', pledgeId);
@@ -2508,7 +2602,7 @@ document.getElementById('donationsTableBody').addEventListener('click', async (e
   if(editBtn){ openDonationModal(null, editBtn.dataset.id); return; }
   const btn = e.target.closest('.delete-donation'); if(!btn) return;
   if(!perms.canDonations) return;
-  if(!confirm('Delete this donation?')) return;
+  if(!(await showConfirm('Delete this donation?', { title:'Delete donation?' }))) return;
   const d = store.donations.find(x=>x.id===btn.dataset.id);
   const { error } = await sb.from('ganesh_donations').delete().eq('id', btn.dataset.id);
   if(error){ showToast('Error: '+error.message); return; }
@@ -2529,7 +2623,7 @@ document.getElementById('expensesTableBody').addEventListener('click', async (e)
   if(editBtn){ openExpenseModal(editBtn.dataset.id); return; }
   const btn = e.target.closest('.delete-expense'); if(!btn) return;
   if(!perms.canExpenses) return;
-  if(!confirm('Delete this expense?')) return;
+  if(!(await showConfirm('Delete this expense?', { title:'Delete expense?' }))) return;
   const ex = store.expenses.find(x=>x.id===btn.dataset.id);
   const { error } = await sb.from('ganesh_expenses').delete().eq('id', btn.dataset.id);
   if(error){ showToast('Error: '+error.message); return; }
@@ -2572,7 +2666,7 @@ document.getElementById('saveFlatBtn').addEventListener('click', async ()=>{
     if(!newId){ showToast('Flat number cannot be blank'); return; }
     if(newId !== oldId){
       if(store.flats.some(f=>f.id===newId)){ showToast('A flat with that number already exists'); return; }
-      if(!confirm(`Rename flat ${oldId} to ${newId}? This updates it everywhere it's referenced.`)) return;
+      if(!(await showConfirm(`Rename flat ${oldId} to ${newId}? This updates it everywhere it's referenced.`, { danger:false, title:'Rename flat?', okLabel:'Rename', icon:'✏️' }))) return;
     }
   }
 
@@ -2636,7 +2730,7 @@ document.getElementById('recentTransfersList').addEventListener('click', async (
   const delBtn = e.target.closest('.delete-transfer');
   if(!delBtn) return;
   if(!perms.isAdmin) return;
-  if(!confirm('Delete this transfer?')) return;
+  if(!(await showConfirm('Delete this transfer?', { title:'Delete transfer?' }))) return;
   const t = store.fundTransfers.find(x=>x.id===delBtn.dataset.id);
   const { error } = await sb.from('ganesh_fund_transfers').delete().eq('id', delBtn.dataset.id);
   if(error){ showToast('Error: '+error.message); return; }
@@ -2964,7 +3058,7 @@ document.getElementById('sevaDaysList').addEventListener('click', async (e)=>{
   const delDayBtn = e.target.closest('.seva-day-delete');
   if(delDayBtn){
     if(!perms.isAdmin) return;
-    if(!confirm('Remove this seva day? This also removes any sign-ups for it.')) return;
+    if(!(await showConfirm('Remove this seva day? This also removes any sign-ups for it.', { title:'Remove seva day?' }))) return;
     const dayId = delDayBtn.dataset.day;
     const inUse = store.sevaSignups.some(s=>s.day_id===dayId);
     if(inUse){ showToast('Remove the sign-ups for this day first, or delete them individually.'); return; }
@@ -2987,7 +3081,7 @@ document.getElementById('sevaDaysList').addEventListener('click', async (e)=>{
   const delBtn = e.target.closest('.delete-signup');
   if(delBtn){
     if(!perms.isAdmin) return;
-    if(!confirm('Delete this sign-up?')) return;
+    if(!(await showConfirm('Delete this sign-up?', { title:'Delete sign-up?' }))) return;
     const signupInfo = store.sevaSignups.find(s=>s.id===delBtn.dataset.signup);
     const { error } = await sb.from('ganesh_prasadam_signups').delete().eq('id', delBtn.dataset.signup);
     if(error){ showToast('Error: '+error.message); return; }
@@ -3312,8 +3406,8 @@ function buildReportHTML(kind){
         <div class="report-stat"><div class="rlabel">BALANCE</div><div class="rval">${fmtINR(v.balance)}</div></div>
         <div class="report-stat"><div class="rlabel">FLATS CONTRIBUTED</div><div class="rval">${v.contributedCount} / ${v.totalFlats}</div></div>
       </div>`;
-    body = topDonorsHtml(v)
-      + `<div class="report-section-title">Expenses by Category</div><table><thead><tr><th>Category</th><th class="num">Amount</th></tr></thead><tbody>${v.categoryBreakdown.map(c=>`<tr><td>${escapeHtml(c.category)}</td><td class="num">${c.amountFmt}</td></tr>`).join('') || '<tr><td colspan="2">No expenses recorded.</td></tr>'}</tbody></table>`
+    body = donationsTableHtml(v)
+      + expensesTableHtml(v)
       + budgetPerformanceHtml(v)
       + pledgesOutstandingHtml(v);
   } else {
@@ -3462,8 +3556,7 @@ document.getElementById('exportTxnCsvBtn').addEventListener('click', exportTrans
 document.getElementById('clearYearBtn').addEventListener('click', async ()=>{
   if(!perms.isAdmin) return;
   const year = ui.year;
-  if(!confirm(`This will permanently delete all donations, expenses, and pledges dated in ${year} (other years are untouched, flats are kept). Continue?`)) return;
-  if(!confirm(`Really sure? This cannot be undone for ${year}.`)) return;
+  if(!(await showConfirm(`This will permanently delete all donations, expenses, and pledges dated in ${year} (other years are untouched, flats are kept). This cannot be undone.`, { title:`Clear all of ${year}?`, okLabel:`Delete ${year} Data`, requireText: String(year) }))) return;
   const donIds = store.donations.filter(d=>yearOf(d.date)===year).map(d=>d.id);
   const expIds = store.expenses.filter(e=>yearOf(e.date)===year).map(e=>e.id);
   const pledgeIds = store.pledges.filter(p=>yearOf(p.pledged_date)===year).map(p=>p.id);
@@ -3486,9 +3579,8 @@ document.getElementById('clearYearBtn').addEventListener('click', async ()=>{
 // wipes years of financial history in one click.
 document.getElementById('clearAllYearsBtn').addEventListener('click', async ()=>{
   if(!perms.isAdmin) return;
-  if(!confirm('This deletes donations, expenses, and pledges for EVERY year, not just the current one. This is almost never what you want — use "Clear <Year>" above instead unless you are certain. Continue?')) return;
-  const typed = prompt('This cannot be undone. Type ALL YEARS (in capitals) to confirm you want to permanently delete every year\'s financial history:');
-  if(typed !== 'ALL YEARS'){ showToast('Cancelled — text did not match'); return; }
+  const ok = await showConfirm('This deletes donations, expenses, and pledges for EVERY year, not just the current one — and cannot be undone. This is almost never what you want; use "Clear <Year>" above instead unless you are certain.', { title:'Delete ALL years\' data?', okLabel:'Delete Everything', requireText:'ALL YEARS' });
+  if(!ok) return;
   const NIL = '00000000-0000-0000-0000-000000000000';
   const results = await Promise.all([
     sb.from('ganesh_donations').delete().neq('id', NIL),
