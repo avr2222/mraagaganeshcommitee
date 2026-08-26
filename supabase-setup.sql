@@ -508,6 +508,51 @@ create policy ganesh_activity_log_insert on public.ganesh_activity_log for inser
   with check (actor = auth.uid());
 
 -- ============================================================
+-- Migration: reference-only people (name + mobile number) Super Admin can
+-- add before someone has a real account, so they're pickable as Collected
+-- By / Recorded By / a fund transfer party. Once that person signs up for
+-- real, Super Admin "links" them (sets profile_id) from Settings -- purely
+-- for record-keeping; nothing about existing entries changes.
+--
+-- collected_by / recorded_by / from_user / to_user need to accept EITHER a
+-- real ganesh_profiles id OR a ganesh_people id, so their FK constraints
+-- (which only allowed ganesh_profiles) are dropped here -- the *_name text
+-- columns already stored alongside them remain the source of truth for
+-- display everywhere in the app, so nothing that renders these values
+-- needs to change.
+-- ============================================================
+create table if not exists public.ganesh_people (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  mobile_number text not null default '',
+  profile_id uuid references public.ganesh_profiles(id) on delete set null,
+  created_by uuid references public.ganesh_profiles(id),
+  created_at timestamptz not null default now()
+);
+alter table public.ganesh_people enable row level security;
+
+drop policy if exists ganesh_people_select on public.ganesh_people;
+create policy ganesh_people_select on public.ganesh_people for select
+  using (auth.uid() is not null);
+
+drop policy if exists ganesh_people_insert on public.ganesh_people;
+create policy ganesh_people_insert on public.ganesh_people for insert
+  with check (public.current_role() = 'super_admin');
+
+drop policy if exists ganesh_people_update on public.ganesh_people;
+create policy ganesh_people_update on public.ganesh_people for update
+  using (public.current_role() = 'super_admin');
+
+drop policy if exists ganesh_people_delete on public.ganesh_people;
+create policy ganesh_people_delete on public.ganesh_people for delete
+  using (public.current_role() = 'super_admin');
+
+alter table public.ganesh_donations drop constraint if exists ganesh_donations_collected_by_fkey;
+alter table public.ganesh_expenses drop constraint if exists ganesh_expenses_recorded_by_fkey;
+alter table public.ganesh_fund_transfers drop constraint if exists ganesh_fund_transfers_from_user_fkey;
+alter table public.ganesh_fund_transfers drop constraint if exists ganesh_fund_transfers_to_user_fkey;
+
+-- ============================================================
 -- Storage: a 'receipts' bucket for expense bill/receipt photos.
 -- Public-read (so the app can just use a plain URL), but only Super
 -- Admin/Treasurer can upload or remove files — same people who can
@@ -537,7 +582,7 @@ do $$
 declare
   tbl text;
 begin
-  foreach tbl in array array['ganesh_flats','ganesh_donations','ganesh_pledges','ganesh_expenses','ganesh_settings','ganesh_profiles','ganesh_prasadam_days','ganesh_prasadam_signups','ganesh_fund_transfers','ganesh_budgets','ganesh_opening_balances'] loop
+  foreach tbl in array array['ganesh_flats','ganesh_donations','ganesh_pledges','ganesh_expenses','ganesh_settings','ganesh_profiles','ganesh_people','ganesh_prasadam_days','ganesh_prasadam_signups','ganesh_fund_transfers','ganesh_budgets','ganesh_opening_balances'] loop
     if not exists (
       select 1 from pg_publication_tables
       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = tbl

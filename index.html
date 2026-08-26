@@ -849,6 +849,13 @@
           <div id="usersList" class="users-list"></div>
         </div>
 
+        <div class="field admin-only" id="settingsPeopleField">
+          <label>TEAM MEMBERS (NAME + MOBILE REFERENCE)</label>
+          <div class="hint" style="margin-top:0;margin-bottom:8px">Add someone by name and mobile number so you can pick them for Collected By / Recorded By / fund transfers before they've signed up. Once they create their own account, use "Link" so future entries go under their real login — nothing already recorded changes.</div>
+          <div id="peopleList" class="users-list"></div>
+          <button class="btn btn-ghost" id="addPersonBtn" style="margin-top:10px">+ Add Person</button>
+        </div>
+
         <div class="field admin-only" id="settingsOpeningBalanceField">
           <label>OPENING BALANCE FOR <span id="obYearLabel"></span></label>
           <div class="amount-input">
@@ -1062,6 +1069,56 @@
       <div class="modal-actions">
         <button class="btn btn-flat" id="cancelSevaSignupBtn">Cancel</button>
         <button class="btn btn-orange" id="saveSevaSignupBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add a reference-only person (name + mobile) Super Admin can pick as
+       Collected By / Recorded By / a transfer party before they've signed
+       up for a real account -->
+  <div class="modal-overlay hidden" id="addPersonModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title">Add Person</div>
+        <button class="modal-close" id="closeAddPersonModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>NAME</label>
+          <input type="text" id="personName" placeholder="Full name">
+        </div>
+        <div class="field">
+          <label>MOBILE NUMBER</label>
+          <input type="tel" id="personMobile" placeholder="e.g. 98765 43210">
+        </div>
+        <div class="hint">This is just a name + number for your own reference — it doesn't create a login. They'll show up wherever you pick "Collected By", "Recorded By", or a transfer party.</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="cancelAddPersonBtn">Cancel</button>
+        <button class="btn btn-orange" id="saveAddPersonBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Link a reference-only person to the real account they signed up
+       with, once they have one -->
+  <div class="modal-overlay hidden" id="linkPersonModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title">Link to Account</div>
+        <button class="modal-close" id="closeLinkPersonModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="account-box" id="linkPersonContext">—</div>
+        <div class="field">
+          <label>THEIR SIGNED-UP ACCOUNT</label>
+          <select id="linkPersonProfileSelect"></select>
+        </div>
+        <div class="hint">Historical entries under this name stay exactly as they are. This just lets you pick their real login for new entries going forward.</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="cancelLinkPersonBtn">Cancel</button>
+        <button class="btn btn-orange" id="saveLinkPersonBtn">Link</button>
       </div>
     </div>
   </div>

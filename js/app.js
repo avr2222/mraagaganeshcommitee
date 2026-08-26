@@ -110,6 +110,21 @@ function escapeHtml(str){
 const ROLE_LABELS = { super_admin:'Super Admin', treasurer:'Treasurer', donation_collector:'Donation Collector', viewer:'Viewer' };
 function displayName(p){ return (p && (p.full_name || p.email)) || 'Unassigned'; }
 
+// Everyone selectable as Collected By / Recorded By / a fund transfer party:
+// real signed-up accounts (store.profiles) plus reference-only people Super
+// Admin added with just a name + mobile number for someone who hasn't
+// signed up yet (store.people). Options carry the display name in
+// data-name, so save handlers never need to re-look-up the name by id --
+// that lookup would fail for a placeholder person id, which isn't in
+// store.profiles.
+function assignablePeopleOptionsHtml(){
+  const profs = store.profiles.map(p=>({ id:p.id, name:displayName(p) }));
+  const ppl = store.people.map(p=>({ id:p.id, name:p.full_name+(p.profile_id?'':' (not signed up)') }));
+  return profs.concat(ppl).map(p=>
+    `<option value="${p.id}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`
+  ).join('');
+}
+
 /* ---------- sortable table headers ---------- */
 // Applies a {key, dir} sort state to a list using a per-key value-extractor
 // map. Used by every data table (Flats, Donations, Expenses, Transactions)
@@ -164,7 +179,7 @@ async function logActivity(action, details){
 let session = null;
 let profile = null;         // { id, email, full_name, role }
 let perms = { isAdmin:false, canDonations:false, canExpenses:false, canEditFlats:false };
-const store = { flats:[], donations:[], pledges:[], expenses:[], settings:{committee_name:'Ganesh Pooja Committee', upi_number_1:'', upi_number_2:'', seva_signup_url:''}, profiles:[], sevaDays:[], sevaSignups:[], fundTransfers:[], budgets:[], openingBalances:[], activityLog:[] };
+const store = { flats:[], donations:[], pledges:[], expenses:[], settings:{committee_name:'Ganesh Pooja Committee', upi_number_1:'', upi_number_2:'', seva_signup_url:''}, profiles:[], people:[], sevaDays:[], sevaSignups:[], fundTransfers:[], budgets:[], openingBalances:[], activityLog:[] };
 const BUDGET_COLORS = ['#F97316','#2563EB','#16A34A','#DC2626','#9333EA','#0EA5E9','#CA8A04','#DB2777','#0D9488','#64748B','#EA580C','#4F46E5'];
 
 /* ---- transient UI state (not persisted) ---- */
@@ -392,8 +407,14 @@ async function fetchAllData(){
   if(perms.isAdmin || perms.canExpenses){
     const { data: profs, error: profErr } = await sb.from('ganesh_profiles').select('*').order('email');
     if(!profErr) store.profiles = profs || [];
+    // Reference-only people (name + mobile) Super Admin added before they
+    // have a real account -- selectable for Collected By / Recorded By /
+    // fund transfers the same as a signed-up profile.
+    const { data: ppl, error: pplErr } = await sb.from('ganesh_people').select('*').order('full_name');
+    if(!pplErr) store.people = ppl || [];
   } else {
     store.profiles = [];
+    store.people = [];
   }
 
   if(perms.canExpenses){
@@ -1332,8 +1353,99 @@ function renderAll(){
   renderExpenses(v);
   renderTransactions(v);
   renderUsersList();
+  renderPeopleList();
   renderPrasadam();
 }
+
+// Reference-only people (name + mobile) Super Admin added for someone who
+// hasn't signed up yet -- selectable for Collected By / Recorded By /
+// transfers. Once linked to a real account, "Link" becomes a status pill
+// instead, since new entries should go under their real login from then on.
+function renderPeopleList(){
+  const el = document.getElementById('peopleList');
+  if(!perms.isAdmin){ el.innerHTML=''; return; }
+  el.innerHTML = store.people.map(p=>{
+    const linkedProfile = p.profile_id ? store.profiles.find(x=>x.id===p.profile_id) : null;
+    const status = linkedProfile
+      ? `<span class="pill-tag" style="background:#DCFCE7;color:#16A34A">Linked → ${escapeHtml(displayName(linkedProfile))}</span>`
+      : `<button class="btn-link link-person" data-id="${p.id}" style="font-size:11px;font-weight:800">Link to Account</button>`;
+    return `
+      <div class="user-row">
+        <div class="user-row-email" title="${escapeHtml(p.mobile_number||'')}">${escapeHtml(p.full_name)}${p.mobile_number ? ' · '+escapeHtml(p.mobile_number) : ''}</div>
+        ${status}
+        <button class="item-card-edit delete-person" data-id="${p.id}" title="Delete">🗑</button>
+      </div>`;
+  }).join('') || '<p class="empty-sub">No reference-only people added yet.</p>';
+}
+document.getElementById('addPersonBtn').addEventListener('click', ()=>{
+  document.getElementById('personName').value = '';
+  document.getElementById('personMobile').value = '';
+  document.getElementById('addPersonModal').classList.remove('hidden');
+});
+document.getElementById('closeAddPersonModal').addEventListener('click', ()=> document.getElementById('addPersonModal').classList.add('hidden'));
+document.getElementById('cancelAddPersonBtn').addEventListener('click', ()=> document.getElementById('addPersonModal').classList.add('hidden'));
+document.getElementById('saveAddPersonBtn').addEventListener('click', async ()=>{
+  if(!perms.isAdmin) return;
+  const name = document.getElementById('personName').value.trim();
+  const mobile = document.getElementById('personMobile').value.trim();
+  if(!name){ showToast('Please enter a name'); return; }
+  const btn = document.getElementById('saveAddPersonBtn');
+  btn.disabled = true;
+  const { error } = await sb.from('ganesh_people').insert({ full_name: name, mobile_number: mobile, created_by: profile.id });
+  btn.disabled = false;
+  if(error){ showToast('Error: '+error.message); return; }
+  await logActivity('Added team member', name+(mobile?' ('+mobile+')':''));
+  await fetchAllData();
+  document.getElementById('addPersonModal').classList.add('hidden');
+  renderAll();
+  showToast('Person added ✓');
+});
+
+let linkingPersonId = null;
+document.getElementById('peopleList').addEventListener('click', async (e)=>{
+  const linkBtn = e.target.closest('.link-person');
+  if(linkBtn){
+    if(!perms.isAdmin) return;
+    const p = store.people.find(x=>x.id===linkBtn.dataset.id);
+    if(!p) return;
+    linkingPersonId = p.id;
+    document.getElementById('linkPersonContext').textContent = p.full_name + (p.mobile_number ? ' · '+p.mobile_number : '');
+    const sel = document.getElementById('linkPersonProfileSelect');
+    sel.innerHTML = store.profiles.map(pr=>`<option value="${pr.id}">${escapeHtml(displayName(pr))}</option>`).join('') || '<option value="">No signed-up accounts yet</option>';
+    document.getElementById('linkPersonModal').classList.remove('hidden');
+    return;
+  }
+  const delBtn = e.target.closest('.delete-person');
+  if(delBtn){
+    if(!perms.isAdmin) return;
+    const p = store.people.find(x=>x.id===delBtn.dataset.id);
+    if(!(await showConfirm(`Remove ${p?p.full_name:'this person'} from the reference list? Entries already recorded under their name are not affected.`, { title:'Remove person?' }))) return;
+    const { error } = await sb.from('ganesh_people').delete().eq('id', delBtn.dataset.id);
+    if(error){ showToast('Error: '+error.message); return; }
+    await logActivity('Removed team member', p ? p.full_name : delBtn.dataset.id);
+    await fetchAllData(); renderAll(); showToast('Person removed');
+  }
+});
+document.getElementById('closeLinkPersonModal').addEventListener('click', ()=>{ document.getElementById('linkPersonModal').classList.add('hidden'); linkingPersonId=null; });
+document.getElementById('cancelLinkPersonBtn').addEventListener('click', ()=>{ document.getElementById('linkPersonModal').classList.add('hidden'); linkingPersonId=null; });
+document.getElementById('saveLinkPersonBtn').addEventListener('click', async ()=>{
+  if(!perms.isAdmin || !linkingPersonId) return;
+  const profileId = document.getElementById('linkPersonProfileSelect').value;
+  if(!profileId){ showToast('No account to link to'); return; }
+  const btn = document.getElementById('saveLinkPersonBtn');
+  btn.disabled = true;
+  const { error } = await sb.from('ganesh_people').update({ profile_id: profileId }).eq('id', linkingPersonId);
+  btn.disabled = false;
+  if(error){ showToast('Error: '+error.message); return; }
+  const p = store.people.find(x=>x.id===linkingPersonId);
+  const pr = store.profiles.find(x=>x.id===profileId);
+  await logActivity('Linked team member to account', (p?p.full_name:'')+' → '+(pr?displayName(pr):''));
+  await fetchAllData();
+  document.getElementById('linkPersonModal').classList.add('hidden');
+  linkingPersonId = null;
+  renderAll();
+  showToast('Linked ✓');
+});
 
 function renderPrasadam(){
   const listEl = document.getElementById('sevaDaysList');
@@ -1602,7 +1714,7 @@ function openDonationModal(flatId, donationId){
   cbField.hidden = !perms.isAdmin;
   if(perms.isAdmin){
     const cbSel = document.getElementById('donCollectedBy');
-    cbSel.innerHTML = store.profiles.map(p=>`<option value="${p.id}">${escapeHtml(displayName(p))}</option>`).join('');
+    cbSel.innerHTML = assignablePeopleOptionsHtml();
     cbSel.value = existing ? (existing.collected_by || profile.id) : profile.id;
   }
   donationModal.classList.remove('hidden');
@@ -1795,9 +1907,9 @@ document.getElementById('saveDonationBtn').addEventListener('click', async ()=>{
 
   let collectedBy = profile.id, collectedByName = displayName(profile);
   if(perms.isAdmin){
-    const chosenId = document.getElementById('donCollectedBy').value;
-    const chosen = store.profiles.find(p=>p.id===chosenId);
-    if(chosen){ collectedBy = chosen.id; collectedByName = displayName(chosen); }
+    const cbSel = document.getElementById('donCollectedBy');
+    const chosenName = cbSel.selectedOptions[0]?.dataset.name;
+    if(cbSel.value && chosenName){ collectedBy = cbSel.value; collectedByName = chosenName; }
   }
   let payload = { flat_id: flatId, name: name||'Resident', kind, date, note, created_by: profile.id, collected_by: collectedBy, collected_by_name: collectedByName };
   if(kind==='cash'){
@@ -2498,7 +2610,7 @@ function openExpenseModal(expenseId){
   rbField.hidden = !perms.isAdmin;
   if(perms.isAdmin){
     const rbSel = document.getElementById('expRecordedBy');
-    rbSel.innerHTML = store.profiles.map(p=>`<option value="${p.id}">${escapeHtml(displayName(p))}</option>`).join('');
+    rbSel.innerHTML = assignablePeopleOptionsHtml();
     rbSel.value = existing ? (existing.recorded_by || profile.id) : profile.id;
   }
   expenseModal.classList.remove('hidden');
@@ -2551,9 +2663,9 @@ document.getElementById('saveExpenseBtn').addEventListener('click', async ()=>{
   if(!amount || amount<=0){ showToast('Please enter a valid amount'); return; }
   let recordedBy = profile.id, recordedByName = displayName(profile);
   if(perms.isAdmin){
-    const chosenId = document.getElementById('expRecordedBy').value;
-    const chosen = store.profiles.find(p=>p.id===chosenId);
-    if(chosen){ recordedBy = chosen.id; recordedByName = displayName(chosen); }
+    const rbSel = document.getElementById('expRecordedBy');
+    const chosenName = rbSel.selectedOptions[0]?.dataset.name;
+    if(rbSel.value && chosenName){ recordedBy = rbSel.value; recordedByName = chosenName; }
   }
   const btn = document.getElementById('saveExpenseBtn');
   btn.disabled = true;
@@ -2715,7 +2827,7 @@ function openTransferModal(transferId){
   const existing = transferId ? store.fundTransfers.find(x=>x.id===transferId) : null;
   ui.editingTransferId = existing ? transferId : null;
   document.getElementById('transferModalTitle').textContent = existing ? 'Edit Transfer' : 'Record Transfer';
-  const options = store.profiles.map(p=>`<option value="${p.id}" data-name="${escapeHtml(displayName(p))}">${escapeHtml(displayName(p))}</option>`).join('');
+  const options = assignablePeopleOptionsHtml();
   document.getElementById('transferFrom').innerHTML = options;
   document.getElementById('transferTo').innerHTML = options;
   document.getElementById('transferFrom').value = existing ? existing.from_user : profile.id;
@@ -2755,28 +2867,28 @@ document.getElementById('saveTransferBtn').addEventListener('click', async ()=>{
   if(!fromId || !toId){ showToast('Please select both people'); return; }
   if(fromId===toId){ showToast('From and To must be different people'); return; }
   if(!amount || amount<=0){ showToast('Please enter a valid amount'); return; }
-  const fromP = store.profiles.find(p=>p.id===fromId);
-  const toP = store.profiles.find(p=>p.id===toId);
+  const fromName = document.getElementById('transferFrom').selectedOptions[0]?.dataset.name || 'Unassigned';
+  const toName = document.getElementById('transferTo').selectedOptions[0]?.dataset.name || 'Unassigned';
   const btn = document.getElementById('saveTransferBtn');
   btn.disabled = true;
   const editingId = ui.editingTransferId;
   let error;
   if(editingId){
     ({ error } = await sb.from('ganesh_fund_transfers').update({
-      from_user: fromId, from_user_name: displayName(fromP),
-      to_user: toId, to_user_name: displayName(toP),
+      from_user: fromId, from_user_name: fromName,
+      to_user: toId, to_user_name: toName,
       amount, date, note,
     }).eq('id', editingId));
   } else {
     ({ error } = await sb.from('ganesh_fund_transfers').insert({
-      from_user: fromId, from_user_name: displayName(fromP),
-      to_user: toId, to_user_name: displayName(toP),
+      from_user: fromId, from_user_name: fromName,
+      to_user: toId, to_user_name: toName,
       amount, date, note, created_by: profile.id,
     }));
   }
   btn.disabled = false;
   if(error){ showToast('Error: '+error.message); return; }
-  await logActivity(editingId ? 'Edited transfer' : 'Recorded transfer', displayName(fromP)+' → '+displayName(toP)+' — '+fmtINR(amount));
+  await logActivity(editingId ? 'Edited transfer' : 'Recorded transfer', fromName+' → '+toName+' — '+fmtINR(amount));
   await fetchAllData();
   closeTransferModal();
   renderAll();

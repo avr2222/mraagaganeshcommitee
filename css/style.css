@@ -92,7 +92,8 @@ button{cursor:pointer}
 .btn:active{transform:translateY(0);filter:brightness(.95)}
 
 .banner-warn{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:12px;padding:12px 16px;font-size:13px;font-weight:600;margin-bottom:16px}
-.banner-warn .btn-link{border:none;background:none;color:#92400E;font-weight:800;text-decoration:underline;font-size:13px;padding:0;flex-shrink:0}
+.btn-link{border:none;background:none;color:var(--orange-dark);font-weight:800;text-decoration:underline;font-size:13px;padding:0;cursor:pointer}
+.banner-warn .btn-link{color:#92400E;flex-shrink:0}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:20px}
 .stat-card{background:#fff;border:1px solid var(--slate-200);border-radius:16px;padding:18px;transition:box-shadow .18s ease,transform .18s ease}
 @media (hover:hover){ .stat-card:hover{box-shadow:0 6px 20px rgba(15,23,42,.07);transform:translateY(-2px)} }
@@ -239,11 +240,11 @@ button{cursor:pointer}
 .modal-close{border:none;background:var(--slate-100);width:32px;height:32px;border-radius:10px;color:var(--slate-600);font-size:15px}
 .modal-body{display:flex;flex-direction:column;gap:14px}
 .field label{font-size:11px;font-weight:700;color:var(--slate-400);display:block;margin-bottom:6px;letter-spacing:.03em}
-.field input[type=text],.field input[type=number],.field input[type=date],.field input[type=email],.field input[type=password],.field select,.field textarea{
+.field input[type=text],.field input[type=number],.field input[type=date],.field input[type=email],.field input[type=password],.field input[type=tel],.field select,.field textarea{
   width:100%;border:1px solid var(--slate-200);border-radius:10px;padding:11px 12px;font-size:16px;outline:none;color:var(--ink);background:#fff;
   transition:border-color .15s ease,box-shadow .15s ease;
 }
-.field input[type=text]:focus,.field input[type=number]:focus,.field input[type=date]:focus,.field input[type=email]:focus,.field input[type=password]:focus,.field select:focus,.field textarea:focus{
+.field input[type=text]:focus,.field input[type=number]:focus,.field input[type=date]:focus,.field input[type=email]:focus,.field input[type=password]:focus,.field input[type=tel]:focus,.field select:focus,.field textarea:focus{
   border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-light);
 }
 .field textarea{resize:none}
