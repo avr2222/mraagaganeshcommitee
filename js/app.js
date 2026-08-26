@@ -578,24 +578,37 @@ function computeView(){
   }));
 
   // Fund custody: who is currently holding how much (collected − spent − handed off + received)
+  // Keyed by the person's id, not their display name -- a name-keyed bucket
+  // silently splits into two whenever the same person's name is rendered
+  // differently between entries (renamed profile, or picked as a "team
+  // member" reference before vs. after being linked to a real account), so
+  // a transfer and the expense it funded stop netting against each other
+  // even though they're the same person. The id (collected_by / recorded_by
+  // / from_user / to_user) stays stable regardless of name changes; the
+  // *_name text is only used to label the bucket for display.
   const transfers = store.fundTransfers.filter(t => yearOf(t.date)===ui.year);
   const custody = {};
+  const custodyNames = {};
+  const addCustody = (id, name, delta) => {
+    const key = id || 'unassigned';
+    custody[key] = (custody[key]||0) + delta;
+    if(name) custodyNames[key] = name;
+  };
   // Cash-only — an in-kind item's estimated value was never physically
   // handed to the collector, so it shouldn't inflate their custody balance.
-  donations.filter(d=>d.kind==='cash').forEach(d=>{ const who = d.collected_by_name || 'Unassigned'; custody[who] = (custody[who]||0) + d.amount; });
-  expenses.forEach(e=>{ const who = e.recorded_by_name || 'Unassigned'; custody[who] = (custody[who]||0) - e.amount; });
+  donations.filter(d=>d.kind==='cash').forEach(d=> addCustody(d.collected_by, d.collected_by_name, d.amount));
+  expenses.forEach(e=> addCustody(e.recorded_by, e.recorded_by_name, -e.amount));
   transfers.forEach(t=>{
-    const from = t.from_user_name || 'Unassigned', to = t.to_user_name || 'Unassigned';
-    custody[from] = (custody[from]||0) - t.amount;
-    custody[to] = (custody[to]||0) + t.amount;
+    addCustody(t.from_user, t.from_user_name, -t.amount);
+    addCustody(t.to_user, t.to_user_name, t.amount);
   });
   const custodyMax = Math.max(1, ...Object.values(custody).map(Math.abs), 1);
   const custodyBreakdown = Object.keys(custody)
-    .filter(who => Math.round(custody[who])!==0)
+    .filter(key => Math.round(custody[key])!==0)
     .sort((a,b)=>custody[b]-custody[a])
-    .map(who=>({
-      person:who, amount:custody[who], amountFmt: (custody[who]<0?'-':'')+fmtINR(Math.abs(custody[who])),
-      isNegative: custody[who]<0, pct: Math.round(Math.abs(custody[who])/custodyMax*100),
+    .map(key=>({
+      person: custodyNames[key] || 'Unassigned', amount:custody[key], amountFmt: (custody[key]<0?'-':'')+fmtINR(Math.abs(custody[key])),
+      isNegative: custody[key]<0, pct: Math.round(Math.abs(custody[key])/custodyMax*100),
     }));
 
   const recentTransfers = [...transfers].sort((a,b)=> (b.created_at>a.created_at?1:-1)).slice(0,5).map(t=>({
@@ -2684,6 +2697,7 @@ document.getElementById('saveExpenseBtn').addEventListener('click', async ()=>{
     ({ error } = await sb.from('ganesh_expenses').update({
       category, description, amount, mode, date, note, bill_attached: !!billUrl, bill_url: billUrl,
       payment_type: paymentType, total_expected: totalExpected,
+      recorded_by: recordedBy, recorded_by_name: recordedByName,
     }).eq('id', editingId));
   } else {
     ({ error } = await sb.from('ganesh_expenses').insert({
