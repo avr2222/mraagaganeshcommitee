@@ -6,7 +6,7 @@ const SUPABASE_URL = 'https://tzcernzuwtwgrsattjaw.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_qTZL-nfangfMUqdBcBvgww_q_ucMvXR';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const CATEGORIES = ['Pooja Samagri','Idol & Decoration','Prasad & Food','Sound & Lighting','Flowers & Decoration','Cleaning & Sanitation','Priest / Purohit','Miscellaneous'];
+const CATEGORIES = ['Pooja Samagri','Idol & Decoration','Prasad & Food','Sound & Lighting','Flowers & Decoration','Priest / Purohit','Miscellaneous'];
 const FLATS_PER_FLOOR = 18;   // units per floor
 const FLOOR_COUNT = 4;        // G + 3 (Ground, 1st, 2nd, 3rd)
 const DEFAULT_FLAT_COUNT = FLATS_PER_FLOOR * FLOOR_COUNT; // 72
@@ -2914,6 +2914,20 @@ document.getElementById('saveTransferBtn').addEventListener('click', async ()=>{
    ============================================================ */
 const budgetModal = document.getElementById('budgetModal');
 let budgetEditRows = [];
+let budgetModalCollected = 0;
+
+function renderBudgetSummary(){
+  const allocated = budgetEditRows.reduce((sum,r)=>{
+    const val = r.mode==='percent' ? Math.round(((Number(r.pct)||0)/100) * budgetModalCollected) : (Number(r.amount)||0);
+    return sum + val;
+  }, 0);
+  const available = budgetModalCollected - allocated;
+  document.getElementById('budgetSumCollected').textContent = fmtINR(budgetModalCollected);
+  document.getElementById('budgetSumAllocated').textContent = fmtINR(allocated);
+  const availEl = document.getElementById('budgetSumAvailable');
+  availEl.textContent = (available<0?'-':'') + fmtINR(Math.abs(available));
+  availEl.classList.toggle('over-budget', available < 0);
+}
 
 function buildBudgetEditRows(){
   const existing = store.budgets.filter(b=>b.year===ui.year);
@@ -2938,11 +2952,13 @@ function renderBudgetRows(){
       </div>
     </div>
   `).join('') || '<p class="empty-sub">No categories yet — add one below.</p>';
+  renderBudgetSummary();
 }
 
 function openBudgetModal(){
   if(!perms.canExpenses){ showToast('Only Super Admin or Treasurer can manage budgets'); return; }
   document.getElementById('budgetModalYear').textContent = ui.year;
+  budgetModalCollected = computeView().totalCollected;
   budgetEditRows = buildBudgetEditRows();
   document.getElementById('newBudgetCategory').value = '';
   renderBudgetRows();
@@ -2966,6 +2982,7 @@ document.getElementById('budgetRows').addEventListener('input', (e)=>{
   const idx = Number(row.dataset.idx);
   if(budgetEditRows[idx].mode==='percent') budgetEditRows[idx].pct = input.value;
   else budgetEditRows[idx].amount = input.value;
+  renderBudgetSummary();
 });
 document.getElementById('copyPrevBudgetBtn').addEventListener('click', ()=>{
   const prevYear = String(Number(ui.year)-1);

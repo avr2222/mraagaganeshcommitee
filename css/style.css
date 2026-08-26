@@ -147,6 +147,11 @@ button{cursor:pointer}
 .budget-status-tag.unbudgeted{background:var(--slate-100);color:var(--slate-600)}
 
 /* Budget edit modal */
+.budget-summary{background:var(--slate-50,#F8FAFC);border:1px solid var(--slate-200);border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;flex-direction:column;gap:6px}
+.budget-summary-row{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--slate-600)}
+.budget-summary-row b{font-size:14px;color:var(--ink);font-weight:800}
+#budgetSumAvailableRow{border-top:1px dashed var(--slate-200);padding-top:6px;margin-top:2px}
+#budgetSumAvailableRow b.over-budget{color:#DC2626}
 .budget-rows{display:flex;flex-direction:column;gap:10px;max-height:360px;overflow-y:auto;padding-right:2px}
 .budget-row{display:flex;align-items:center;gap:8px}
 .budget-row-name{flex:1;font-size:13px;font-weight:600;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

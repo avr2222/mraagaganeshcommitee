@@ -945,6 +945,11 @@
       </div>
       <div class="modal-body">
         <p class="subtle" style="margin:-4px 0 10px">Set a planned ₹ amount or a % of this year's total collections per category. Leave a row blank to remove its budget.</p>
+        <div class="budget-summary" id="budgetSummary">
+          <div class="budget-summary-row"><span>Total Collected</span><b id="budgetSumCollected">₹0</b></div>
+          <div class="budget-summary-row"><span>Allocated So Far</span><b id="budgetSumAllocated">₹0</b></div>
+          <div class="budget-summary-row" id="budgetSumAvailableRow"><span>Available to Allocate</span><b id="budgetSumAvailable">₹0</b></div>
+        </div>
         <button class="btn btn-ghost" id="copyPrevBudgetBtn" type="button" style="margin-bottom:14px;width:100%">📋 Copy Amounts From Last Year</button>
         <div id="budgetRows" class="budget-rows"></div>
         <div class="field" style="margin-top:14px">
