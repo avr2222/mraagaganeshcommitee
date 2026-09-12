@@ -1293,6 +1293,7 @@ const EXPENSES_SORT_FNS = {
   category: e => (e.title||'').toLowerCase(),
   description: e => (e.description||'').toLowerCase(),
   mode: e => (e.mode||'').toLowerCase(),
+  recordedBy: e => (e.recordedByName||'').toLowerCase(),
   date: e => e.date,
   amount: e => e.amount,
 };
@@ -1351,7 +1352,7 @@ function renderExpenses(v){
     <div class="item-card">
       <div>
         <div class="item-card-title">${escapeHtml(e.title)}${billLink(e.billUrl)} ${paymentBadge(e)}</div>
-        <div class="item-card-sub">${escapeHtml(e.subtitle)} · ${e.dateFmt}</div>
+        <div class="item-card-sub">${escapeHtml(e.subtitle)} · ${e.dateFmt} · by ${escapeHtml(e.recordedByName)}</div>
         ${balanceNote(e)}
       </div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -1368,11 +1369,12 @@ function renderExpenses(v){
       <td class="strong">${escapeHtml(e.title)}${billLink(e.billUrl)} ${paymentBadge(e)}</td>
       <td>${escapeHtml(e.description)}${balanceNote(e)}</td>
       <td>${escapeHtml(e.mode)}</td>
+      <td>${escapeHtml(e.recordedByName)}</td>
       <td>${e.dateFmt}</td>
       <td class="num" style="color:#DC2626">${e.amountFmt}</td>
       <td>${editCell(e.id)} ${delCell(e.id)}</td>
     </tr>
-  `).join('') || '<tr class="empty-row"><td colspan="6">No expenses recorded'+(ui.expensesPersonFilter?' by '+escapeHtml(ui.expensesPersonFilter.name):'')+' for '+ui.year+'.</td></tr>';
+  `).join('') || '<tr class="empty-row"><td colspan="7">No expenses recorded'+(ui.expensesPersonFilter?' by '+escapeHtml(ui.expensesPersonFilter.name):'')+' for '+ui.year+'.</td></tr>';
 }
 
 const TXN_SORT_FNS = {
@@ -3575,16 +3577,17 @@ function expensesTableHtml(v){
   return `
     <div class="report-section-title">Expenses (${v.expensesSorted.length})</div>
     <table>
-      <thead><tr><th>Category</th><th>Description</th><th>Mode</th><th>Date</th><th class="num">Amount</th></tr></thead>
+      <thead><tr><th>Category</th><th>Description</th><th>Mode</th><th>Recorded By</th><th>Date</th><th class="num">Amount</th></tr></thead>
       <tbody>
         ${v.expensesSorted.map(e=>`
           <tr>
             <td>${escapeHtml(e.title)}</td>
             <td>${escapeHtml(e.description)}</td>
             <td>${escapeHtml(e.mode)}</td>
+            <td>${escapeHtml(e.recordedByName)}</td>
             <td>${e.dateFmt}</td>
             <td class="num">${fmtINR(e.amount)}</td>
-          </tr>`).join('') || '<tr><td colspan="5">No expenses recorded.</td></tr>'}
+          </tr>`).join('') || '<tr><td colspan="6">No expenses recorded.</td></tr>'}
       </tbody>
     </table>
     <div class="report-section-title">Expenses by Category</div>
@@ -3800,8 +3803,8 @@ function exportDonationsCSV(){
 }
 function exportExpensesCSV(){
   const v = computeView();
-  const rows = v.expensesSorted.map(e=>[e.date, e.title, e.description, e.mode, e.amount, e.billUrl?'Yes':'No']);
-  downloadCSV(`expenses-${ui.year}-${todayISO()}.csv`, ['Date','Category','Description','Mode','Amount','Bill Attached'], rows);
+  const rows = v.expensesSorted.map(e=>[e.date, e.title, e.description, e.mode, e.recordedByName, e.amount, e.billUrl?'Yes':'No']);
+  downloadCSV(`expenses-${ui.year}-${todayISO()}.csv`, ['Date','Category','Description','Mode','Recorded By','Amount','Bill Attached'], rows);
 }
 function exportTransactionsCSV(){
   const v = computeView();
