@@ -938,6 +938,43 @@
     </div>
   </div>
 
+  <!-- Cash custody detail modal -->
+  <div class="modal-overlay hidden" id="custodyDetailModal">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-head">
+        <div class="modal-title" id="custodyDetailTitle">Cash Custody</div>
+        <button class="modal-close" id="closeCustodyDetailModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="custody-detail-summary">
+          <div class="custody-detail-stat">
+            <div class="custody-detail-label">Total In</div>
+            <div class="custody-detail-value green" id="custodyDetailIn">₹0</div>
+          </div>
+          <div class="custody-detail-stat">
+            <div class="custody-detail-label">Total Out</div>
+            <div class="custody-detail-value red" id="custodyDetailOut">₹0</div>
+          </div>
+          <div class="custody-detail-stat">
+            <div class="custody-detail-label">Net (Cash in Hand)</div>
+            <div class="custody-detail-value" id="custodyDetailNet">₹0</div>
+          </div>
+        </div>
+        <div class="custody-detail-section">
+          <div class="custody-detail-section-title">Money In</div>
+          <div id="custodyDetailInList" class="custody-detail-list"></div>
+        </div>
+        <div class="custody-detail-section">
+          <div class="custody-detail-section-title">Money Out</div>
+          <div id="custodyDetailOutList" class="custody-detail-list"></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="closeCustodyDetailBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Category budgets modal -->
   <div class="modal-overlay hidden" id="budgetModal">
     <div class="modal" style="max-width:520px">

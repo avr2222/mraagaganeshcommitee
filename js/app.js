@@ -622,27 +622,52 @@ function computeView(){
   const transfers = store.fundTransfers.filter(t => yearOf(t.date)===ui.year);
   const custody = {};
   const custodyNames = {};
+  // Itemized in/out entries per person, so a click on their custody bar can
+  // show exactly what made up that balance (which donations, expenses and
+  // transfers), not just the net total.
+  const custodyItems = {};
   const addCustody = (id, name, delta) => {
     const key = id || 'unassigned';
     custody[key] = (custody[key]||0) + delta;
     if(name) custodyNames[key] = name;
   };
+  const addCustodyItem = (id, dir, item) => {
+    const key = id || 'unassigned';
+    if(!custodyItems[key]) custodyItems[key] = { in:[], out:[] };
+    custodyItems[key][dir].push(item);
+  };
   // Cash-only — an in-kind item's estimated value was never physically
   // handed to the collector, so it shouldn't inflate their custody balance.
-  donations.filter(d=>d.kind==='cash').forEach(d=> addCustody(d.collected_by, d.collected_by_name, d.amount));
-  expenses.forEach(e=> addCustody(e.recorded_by, e.recorded_by_name, -e.amount));
+  donations.filter(d=>d.kind==='cash').forEach(d=>{
+    addCustody(d.collected_by, d.collected_by_name, d.amount);
+    addCustodyItem(d.collected_by, 'in', { label:'Donation • '+d.name, amount:d.amount, date:d.date, dateFmt:fmtDate(d.date) });
+  });
+  expenses.forEach(e=>{
+    addCustody(e.recorded_by, e.recorded_by_name, -e.amount);
+    addCustodyItem(e.recorded_by, 'out', { label:'Expense • '+e.category+(e.description?' — '+e.description:''), amount:e.amount, date:e.date, dateFmt:fmtDate(e.date) });
+  });
   transfers.forEach(t=>{
     addCustody(t.from_user, t.from_user_name, -t.amount);
     addCustody(t.to_user, t.to_user_name, t.amount);
+    addCustodyItem(t.from_user, 'out', { label:'Transfer to '+(t.to_user_name||'Unassigned')+(t.note?' • '+t.note:''), amount:t.amount, date:t.date, dateFmt:fmtDate(t.date) });
+    addCustodyItem(t.to_user, 'in', { label:'Transfer from '+(t.from_user_name||'Unassigned')+(t.note?' • '+t.note:''), amount:t.amount, date:t.date, dateFmt:fmtDate(t.date) });
   });
   const custodyMax = Math.max(1, ...Object.values(custody).map(Math.abs), 1);
   const custodyBreakdown = Object.keys(custody)
     .filter(key => Math.round(custody[key])!==0)
     .sort((a,b)=>custody[b]-custody[a])
-    .map(key=>({
-      person: custodyNames[key] || 'Unassigned', amount:custody[key], amountFmt: (custody[key]<0?'-':'')+fmtINR(Math.abs(custody[key])),
-      isNegative: custody[key]<0, pct: Math.round(Math.abs(custody[key])/custodyMax*100),
-    }));
+    .map(key=>{
+      const items = custodyItems[key] || { in:[], out:[] };
+      const itemsIn = [...items.in].sort((a,b)=> (b.date>a.date?1:-1)).map(x=>Object.assign({}, x, { amountFmt:fmtINR(x.amount) }));
+      const itemsOut = [...items.out].sort((a,b)=> (b.date>a.date?1:-1)).map(x=>Object.assign({}, x, { amountFmt:fmtINR(x.amount) }));
+      const totalIn = items.in.reduce((s,x)=>s+x.amount,0);
+      const totalOut = items.out.reduce((s,x)=>s+x.amount,0);
+      return {
+        key, person: custodyNames[key] || 'Unassigned', amount:custody[key], amountFmt: (custody[key]<0?'-':'')+fmtINR(Math.abs(custody[key])),
+        isNegative: custody[key]<0, pct: Math.round(Math.abs(custody[key])/custodyMax*100),
+        totalIn, totalInFmt: fmtINR(totalIn), totalOut, totalOutFmt: fmtINR(totalOut), itemsIn, itemsOut,
+      };
+    });
 
   const recentTransfers = [...transfers].sort((a,b)=> (b.created_at>a.created_at?1:-1)).slice(0,5).map(t=>({
     id:t.id, title: t.from_user_name+' → '+t.to_user_name, subtitle: 'Fund transfer'+(t.note?' • '+t.note:''),
@@ -852,7 +877,7 @@ function renderDashboard(v){
   document.getElementById('expenseBar').style.width = Math.round(v.totalExpenses/v.maxIE*100)+'%';
 
   document.getElementById('custodyBreakdown').innerHTML = v.custodyBreakdown.map(c=>`
-    <div>
+    <div class="bar-row-clickable" data-key="${escapeHtml(c.key)}" title="Click to see money in/out for ${escapeHtml(c.person)}">
       <div class="stack-row"><span>${escapeHtml(c.person)}</span><span class="${c.isNegative?'red':'green'}">${c.amountFmt}</span></div>
       <div class="bar-track"><div class="bar-fill ${c.isNegative?'red':'green'}" style="width:${c.pct}%"></div></div>
     </div>
@@ -2965,6 +2990,37 @@ document.getElementById('saveTransferBtn').addEventListener('click', async ()=>{
   showToast(editingId ? 'Transfer updated ✓' : 'Transfer recorded ✓');
 });
 
+// Clicking a name in "Who Has How Much (Cash in Hand)" opens a breakdown of
+// every donation/expense/transfer that made up their current balance, split
+// into money in vs. money out -- so e.g. multiple transfers handed to
+// someone are easy to find rather than just seeing the net figure.
+const custodyDetailModal = document.getElementById('custodyDetailModal');
+function openCustodyDetailModal(c){
+  document.getElementById('custodyDetailTitle').textContent = c.person;
+  document.getElementById('custodyDetailIn').textContent = c.totalInFmt;
+  document.getElementById('custodyDetailOut').textContent = c.totalOutFmt;
+  const netEl = document.getElementById('custodyDetailNet');
+  netEl.textContent = c.amountFmt;
+  netEl.className = 'custody-detail-value '+(c.isNegative?'red':'green');
+  const row = (x) => `
+    <div class="custody-detail-row">
+      <div><div>${escapeHtml(x.label)}</div><div class="custody-detail-row-date">${x.dateFmt}</div></div>
+      <div class="strong">${x.amountFmt}</div>
+    </div>
+  `;
+  document.getElementById('custodyDetailInList').innerHTML = c.itemsIn.map(row).join('') || '<p class="empty-sub">No money in recorded.</p>';
+  document.getElementById('custodyDetailOutList').innerHTML = c.itemsOut.map(row).join('') || '<p class="empty-sub">No money out recorded.</p>';
+  custodyDetailModal.classList.remove('hidden');
+}
+function closeCustodyDetailModal(){ custodyDetailModal.classList.add('hidden'); }
+document.getElementById('custodyBreakdown').addEventListener('click', (e)=>{
+  const row = e.target.closest('.bar-row-clickable'); if(!row) return;
+  const c = computeView().custodyBreakdown.find(x=>x.key===row.dataset.key);
+  if(c) openCustodyDetailModal(c);
+});
+document.getElementById('closeCustodyDetailModal').addEventListener('click', closeCustodyDetailModal);
+document.getElementById('closeCustodyDetailBtn').addEventListener('click', closeCustodyDetailModal);
+
 /* ============================================================
    CATEGORY BUDGETS
    ============================================================ */
@@ -3803,7 +3859,7 @@ document.getElementById('clearAllYearsBtn').addEventListener('click', async ()=>
 });
 
 /* ---------- close modals on overlay click ---------- */
-const ALL_MODALS = [donationModal, pledgeModal, bulkImportModal, expenseModal, flatModal, settingsModal, sevaDayModal, sevaSignupModal, transferModal, budgetModal, compareYearsModal];
+const ALL_MODALS = [donationModal, pledgeModal, bulkImportModal, expenseModal, flatModal, settingsModal, sevaDayModal, sevaSignupModal, transferModal, custodyDetailModal, budgetModal, compareYearsModal];
 ALL_MODALS.forEach(modal=>{
   modal.addEventListener('click', (e)=>{ if(e.target===modal){ modal.classList.add('hidden'); if(modal===donationModal){ ui.pledgeBeingFulfilled = null; ui.editingDonationId = null; } if(modal===expenseModal) ui.editingExpenseId = null; if(modal===transferModal) ui.editingTransferId = null; if(modal===sevaDayModal) ui.editingSevaDayId = null; } });
 });
