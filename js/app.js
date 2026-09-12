@@ -205,6 +205,9 @@ const ui = {
   year: String(new Date().getFullYear()),
   flatsFilter:'all',
   flatsSearch:'',
+  donationsSearch:'',
+  expensesSearch:'',
+  txnSearch:'',
   txnFilter:'all',
   editingFlatId:null,
   editingExpenseId:null,
@@ -216,6 +219,8 @@ const ui = {
   // Set by clicking a name in the Expenses "Recorded By" breakdown --
   // {key, name} of the person to narrow the expense list/cards down to.
   expensesPersonFilter:null,
+  // Same idea for Donations' "Collected By" breakdown.
+  donationsPersonFilter:null,
   // Sortable table headers -- default order matches each table's previous
   // fixed behavior (flats by flat number, everything else by newest first),
   // so nothing changes until a resident clicks a column header.
@@ -518,7 +523,9 @@ function computeView(){
       mode: isInKind ? 'In-Kind' : d.mode, kind: d.kind, itemDescription: d.item_description,
       amount:d.amount, amountFmt:amountDisplay, amountSigned:signedDisplay, color:'#16A34A',
       date:d.date, dateFmt:fmtDate(d.date), ts:d.created_at || d.date,
-      flatLabel, donorName:d.name, note:d.note||'', collectedByName:d.collected_by_name||'',
+      flatLabel, donorName:d.name, note:d.note||'',
+      collectedByKey: d.collected_by || 'unassigned',
+      collectedByName: currentPersonName(d.collected_by, d.collected_by_name),
     };
   });
   const expenseTx = expenses.map(e=>{
@@ -532,7 +539,7 @@ function computeView(){
       amount:e.amount, amountFmt:fmtINR(e.amount), amountSigned:'-'+fmtINR(e.amount), color:'#DC2626',
       date:e.date, dateFmt:fmtDate(e.date), ts:e.created_at || e.date,
       billUrl: e.bill_url || null,
-      paymentType, totalExpected, balanceDue,
+      paymentType, totalExpected, balanceDue, note: e.note||'',
       recordedByKey: e.recorded_by || 'unassigned',
       recordedByName: currentPersonName(e.recorded_by, e.recorded_by_name),
     };
@@ -543,12 +550,29 @@ function computeView(){
   let filteredTransactions = transactions;
   if(ui.txnFilter==='in') filteredTransactions = transactions.filter(t=>t.type==='in');
   if(ui.txnFilter==='out') filteredTransactions = transactions.filter(t=>t.type==='out');
+  const txnQ = ui.txnSearch.trim().toLowerCase();
+  if(txnQ) filteredTransactions = filteredTransactions.filter(t =>
+    (t.title||'').toLowerCase().includes(txnQ) || (t.subtitle||'').toLowerCase().includes(txnQ) || (t.mode||'').toLowerCase().includes(txnQ)
+  );
 
   const donationsSorted = [...donationTx].sort((a,b)=> (b.ts>a.ts?1:-1));
   const expensesSorted = [...expenseTx].sort((a,b)=> (b.ts>a.ts?1:-1));
-  const filteredExpensesSorted = ui.expensesPersonFilter
+  let filteredDonationsSorted = ui.donationsPersonFilter
+    ? donationsSorted.filter(d => d.collectedByKey === ui.donationsPersonFilter.key)
+    : donationsSorted;
+  const donQ = ui.donationsSearch.trim().toLowerCase();
+  if(donQ) filteredDonationsSorted = filteredDonationsSorted.filter(d =>
+    (d.title||'').toLowerCase().includes(donQ) || (d.mode||'').toLowerCase().includes(donQ) ||
+    (d.note||'').toLowerCase().includes(donQ) || (d.collectedByName||'').toLowerCase().includes(donQ)
+  );
+  let filteredExpensesSorted = ui.expensesPersonFilter
     ? expensesSorted.filter(e => e.recordedByKey === ui.expensesPersonFilter.key)
     : expensesSorted;
+  const expQ = ui.expensesSearch.trim().toLowerCase();
+  if(expQ) filteredExpensesSorted = filteredExpensesSorted.filter(e =>
+    (e.title||'').toLowerCase().includes(expQ) || (e.description||'').toLowerCase().includes(expQ) ||
+    (e.mode||'').toLowerCase().includes(expQ) || (e.note||'').toLowerCase().includes(expQ) || (e.recordedByName||'').toLowerCase().includes(expQ)
+  );
 
   const catTotals = {};
   expenses.forEach(e=>{ catTotals[e.category] = (catTotals[e.category]||0) + e.amount; });
@@ -588,11 +612,19 @@ function computeView(){
   const budgetDonutSegments = budgetBreakdown.filter(c=>c.allocated>0).map(c=>({ value:c.allocated, color:c.color, label:c.category }));
   const overallBudgetPctUsed = totalBudgetAllocated>0 ? Math.round(totalExpenses/totalBudgetAllocated*100) : null;
 
+  // Keyed by id (not the name text) so a person's donations stay in one
+  // bucket even if their collected_by_name snapshot changes over time --
+  // e.g. after a "not signed up" placeholder gets linked to a real account.
   const collectedTotals = {};
-  donations.forEach(d=>{ const who = d.collected_by_name || 'Unassigned'; collectedTotals[who] = (collectedTotals[who]||0) + d.amount; });
-  const collectedMax = Math.max(1, ...Object.values(collectedTotals), 1);
-  const collectedByBreakdown = Object.keys(collectedTotals).sort((a,b)=>collectedTotals[b]-collectedTotals[a]).map(who=>({
-    person:who, amount:collectedTotals[who], amountFmt:fmtINR(collectedTotals[who]), pct: Math.round(collectedTotals[who]/collectedMax*100),
+  donations.forEach(d=>{
+    const key = d.collected_by || 'unassigned';
+    if(!collectedTotals[key]) collectedTotals[key] = { name: currentPersonName(d.collected_by, d.collected_by_name), amount:0 };
+    collectedTotals[key].amount += d.amount;
+  });
+  const collectedMax = Math.max(1, ...Object.values(collectedTotals).map(x=>x.amount), 1);
+  const collectedByBreakdown = Object.keys(collectedTotals).sort((a,b)=>collectedTotals[b].amount-collectedTotals[a].amount).map(key=>({
+    key, person:collectedTotals[key].name, amount:collectedTotals[key].amount,
+    amountFmt:fmtINR(collectedTotals[key].amount), pct: Math.round(collectedTotals[key].amount/collectedMax*100),
   }));
 
   // Keyed by id (not the name text) so a person's expenses stay in one
@@ -622,27 +654,52 @@ function computeView(){
   const transfers = store.fundTransfers.filter(t => yearOf(t.date)===ui.year);
   const custody = {};
   const custodyNames = {};
+  // Itemized in/out entries per person, so a click on their custody bar can
+  // show exactly what made up that balance (which donations, expenses and
+  // transfers), not just the net total.
+  const custodyItems = {};
   const addCustody = (id, name, delta) => {
     const key = id || 'unassigned';
     custody[key] = (custody[key]||0) + delta;
     if(name) custodyNames[key] = name;
   };
+  const addCustodyItem = (id, dir, item) => {
+    const key = id || 'unassigned';
+    if(!custodyItems[key]) custodyItems[key] = { in:[], out:[] };
+    custodyItems[key][dir].push(item);
+  };
   // Cash-only — an in-kind item's estimated value was never physically
   // handed to the collector, so it shouldn't inflate their custody balance.
-  donations.filter(d=>d.kind==='cash').forEach(d=> addCustody(d.collected_by, d.collected_by_name, d.amount));
-  expenses.forEach(e=> addCustody(e.recorded_by, e.recorded_by_name, -e.amount));
+  donations.filter(d=>d.kind==='cash').forEach(d=>{
+    addCustody(d.collected_by, d.collected_by_name, d.amount);
+    addCustodyItem(d.collected_by, 'in', { label:'Donation • '+d.name, amount:d.amount, date:d.date, dateFmt:fmtDate(d.date) });
+  });
+  expenses.forEach(e=>{
+    addCustody(e.recorded_by, e.recorded_by_name, -e.amount);
+    addCustodyItem(e.recorded_by, 'out', { label:'Expense • '+e.category+(e.description?' — '+e.description:''), amount:e.amount, date:e.date, dateFmt:fmtDate(e.date) });
+  });
   transfers.forEach(t=>{
     addCustody(t.from_user, t.from_user_name, -t.amount);
     addCustody(t.to_user, t.to_user_name, t.amount);
+    addCustodyItem(t.from_user, 'out', { label:'Transfer to '+(t.to_user_name||'Unassigned')+(t.note?' • '+t.note:''), amount:t.amount, date:t.date, dateFmt:fmtDate(t.date) });
+    addCustodyItem(t.to_user, 'in', { label:'Transfer from '+(t.from_user_name||'Unassigned')+(t.note?' • '+t.note:''), amount:t.amount, date:t.date, dateFmt:fmtDate(t.date) });
   });
   const custodyMax = Math.max(1, ...Object.values(custody).map(Math.abs), 1);
   const custodyBreakdown = Object.keys(custody)
     .filter(key => Math.round(custody[key])!==0)
     .sort((a,b)=>custody[b]-custody[a])
-    .map(key=>({
-      person: custodyNames[key] || 'Unassigned', amount:custody[key], amountFmt: (custody[key]<0?'-':'')+fmtINR(Math.abs(custody[key])),
-      isNegative: custody[key]<0, pct: Math.round(Math.abs(custody[key])/custodyMax*100),
-    }));
+    .map(key=>{
+      const items = custodyItems[key] || { in:[], out:[] };
+      const itemsIn = [...items.in].sort((a,b)=> (b.date>a.date?1:-1)).map(x=>Object.assign({}, x, { amountFmt:fmtINR(x.amount) }));
+      const itemsOut = [...items.out].sort((a,b)=> (b.date>a.date?1:-1)).map(x=>Object.assign({}, x, { amountFmt:fmtINR(x.amount) }));
+      const totalIn = items.in.reduce((s,x)=>s+x.amount,0);
+      const totalOut = items.out.reduce((s,x)=>s+x.amount,0);
+      return {
+        key, person: custodyNames[key] || 'Unassigned', amount:custody[key], amountFmt: (custody[key]<0?'-':'')+fmtINR(Math.abs(custody[key])),
+        isNegative: custody[key]<0, pct: Math.round(Math.abs(custody[key])/custodyMax*100),
+        totalIn, totalInFmt: fmtINR(totalIn), totalOut, totalOutFmt: fmtINR(totalOut), itemsIn, itemsOut,
+      };
+    });
 
   const recentTransfers = [...transfers].sort((a,b)=> (b.created_at>a.created_at?1:-1)).slice(0,5).map(t=>({
     id:t.id, title: t.from_user_name+' → '+t.to_user_name, subtitle: 'Fund transfer'+(t.note?' • '+t.note:''),
@@ -725,7 +782,7 @@ function computeView(){
     totalCollected, cashCollected, inKindValue, totalExpenses, balance, openingBalance,
     pendingRows, pendingBalanceDue, availableToSpend,
     contributedCount, notContributedCount, totalFlats, contributedPct, maxIE,
-    recentTransactions, filteredTransactions, donationsSorted, expensesSorted, filteredExpensesSorted,
+    recentTransactions, filteredTransactions, donationsSorted, filteredDonationsSorted, expensesSorted, filteredExpensesSorted,
     categoryBreakdown, collectedByBreakdown, recordedByBreakdown,
     budgetBreakdown, budgetDonutSegments, totalBudgetAllocated, overallBudgetPctUsed,
     custodyBreakdown, recentTransfers, yearComparison,
@@ -852,7 +909,7 @@ function renderDashboard(v){
   document.getElementById('expenseBar').style.width = Math.round(v.totalExpenses/v.maxIE*100)+'%';
 
   document.getElementById('custodyBreakdown').innerHTML = v.custodyBreakdown.map(c=>`
-    <div>
+    <div class="bar-row-clickable" data-key="${escapeHtml(c.key)}" title="Click to see money in/out for ${escapeHtml(c.person)}">
       <div class="stack-row"><span>${escapeHtml(c.person)}</span><span class="${c.isNegative?'red':'green'}">${c.amountFmt}</span></div>
       <div class="bar-track"><div class="bar-fill ${c.isNegative?'red':'green'}" style="width:${c.pct}%"></div></div>
     </div>
@@ -1024,14 +1081,31 @@ document.getElementById('globalSearchClear').addEventListener('click', ()=>{
   renderGlobalSearchResults(null);
   globalSearchInput.focus();
 });
+// Briefly flashes an element so a search result is easy to spot after the
+// screen switch/scroll, rather than leaving the user to re-find it by eye.
+function flashHighlight(el){
+  if(!el) return;
+  el.scrollIntoView({ behavior:'smooth', block:'center' });
+  el.classList.add('search-hit-flash');
+  setTimeout(()=> el.classList.remove('search-hit-flash'), 2000);
+}
 document.getElementById('globalSearchResults').addEventListener('click', (e)=>{
   const row = e.target.closest('.gsr-row'); if(!row) return;
-  const type = row.dataset.type, year = row.dataset.year;
+  const type = row.dataset.type, id = row.dataset.id, year = row.dataset.year;
   if(year) ui.year = year;
-  if(type==='donation') goScreen('donations');
-  else if(type==='expense') goScreen('expenses');
-  else if(type==='pledge') goScreen('donations');
-  else if(type==='flat'){ ui.flatsFilter='all'; ui.flatsSearch = row.querySelector('.gsr-row-title').textContent; goScreen('flats'); }
+  if(type==='donation'){
+    goScreen('donations');
+    if(perms.canDonations) openDonationModal(null, id);
+  } else if(type==='expense'){
+    goScreen('expenses');
+    if(perms.canExpenses) openExpenseModal(id);
+  } else if(type==='pledge'){
+    goScreen('donations');
+    setTimeout(()=> flashHighlight(document.getElementById('pledge-row-'+id)), 50);
+  } else if(type==='flat'){
+    if(perms.canEditFlats){ goScreen('flats'); openFlatModal(id); }
+    else { ui.flatsFilter='all'; ui.flatsSearch = row.querySelector('.gsr-row-title').textContent; goScreen('flats'); }
+  }
   renderGlobalSearchResults(null);
   globalSearchInput.value = '';
   document.getElementById('globalSearchClear').classList.add('hidden');
@@ -1221,26 +1295,37 @@ function renderFlats(v){
 const DONATIONS_SORT_FNS = {
   donor: d => (d.title||'').toLowerCase(),
   mode: d => (d.mode||'').toLowerCase(),
+  collectedBy: d => (d.collectedByName||'').toLowerCase(),
   date: d => d.date,
   amount: d => d.amount,
 };
 function renderDonations(v){
   renderPledges(v);
   document.getElementById('donationsTotalLabel').textContent = fmtINR(v.totalCollected);
+  const activeDonFilterKey = ui.donationsPersonFilter ? ui.donationsPersonFilter.key : null;
   document.getElementById('collectedByBreakdown').innerHTML = v.collectedByBreakdown.map(c=>`
-    <div>
+    <div class="bar-row-clickable${c.key===activeDonFilterKey?' active':''}" data-key="${escapeHtml(c.key)}" data-name="${escapeHtml(c.person)}" title="Click to see all donations collected by ${escapeHtml(c.person)}">
       <div class="stack-row"><span>${escapeHtml(c.person)}</span><span class="green">${c.amountFmt}</span></div>
       <div class="bar-track"><div class="bar-fill green" style="width:${c.pct}%"></div></div>
     </div>
   `).join('') || '<p class="empty-sub">No donations recorded for '+ui.year+'.</p>';
+
+  document.getElementById('donationsPersonFilterChip').innerHTML = ui.donationsPersonFilter ? `
+    <div class="person-filter-chip">
+      Showing donations collected by <strong>${escapeHtml(ui.donationsPersonFilter.name)}</strong>
+      <button class="person-filter-clear" id="clearDonationsPersonFilter">✕ Clear</button>
+    </div>
+  ` : '';
+
   updateSortHeaderUI('#screen-donations .data-table thead', ui.donationsSort);
-  const sortedDonations = applySort(v.donationsSorted, ui.donationsSort, DONATIONS_SORT_FNS);
+  const sortedDonations = applySort(v.filteredDonationsSorted, ui.donationsSort, DONATIONS_SORT_FNS);
+  const emptyNote = ui.donationsPersonFilter ? ' by '+escapeHtml(ui.donationsPersonFilter.name) : '';
   const editDonBtn = (id) => perms.canDonations ? `<button class="item-card-edit edit-donation" data-id="${id}" title="Edit">✎</button>` : '';
   document.getElementById('donationsCards').innerHTML = sortedDonations.map(d=>`
     <div class="item-card">
       <div>
         <div class="item-card-title">${escapeHtml(d.title)}</div>
-        <div class="item-card-sub">${escapeHtml(d.mode)} · ${d.dateFmt}</div>
+        <div class="item-card-sub">${escapeHtml(d.mode)} · ${d.dateFmt} · by ${escapeHtml(d.collectedByName)}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <div class="item-card-amt" style="color:#16A34A">${d.amountFmt}</div>
@@ -1249,7 +1334,7 @@ function renderDonations(v){
         <button class="item-card-edit share-receipt" data-id="${d.id}" title="Share receipt">🔗</button>
       </div>
     </div>
-  `).join('') || '<p class="empty-sub">No donations recorded for '+ui.year+'.</p>';
+  `).join('') || '<p class="empty-sub">No donations recorded'+emptyNote+' for '+ui.year+'.</p>';
 
   const delCell = (id) => perms.canDonations ? `<button class="row-edit-btn delete-donation" data-id="${id}" title="Delete">🗑</button>` : '';
   const editDonCell = (id) => perms.canDonations ? `<button class="row-edit-btn edit-donation" data-id="${id}" title="Edit">✎</button>` : '';
@@ -1257,17 +1342,19 @@ function renderDonations(v){
     <tr>
       <td class="strong">${escapeHtml(d.title)}</td>
       <td>${escapeHtml(d.mode)}</td>
+      <td>${escapeHtml(d.collectedByName)}</td>
       <td>${d.dateFmt}</td>
       <td class="num" style="color:#16A34A">${d.amountFmt}</td>
       <td>${editDonCell(d.id)} <button class="row-edit-btn print-receipt" data-id="${d.id}" title="Print receipt">🖨</button> <button class="row-edit-btn share-receipt" data-id="${d.id}" title="Share receipt">🔗</button> ${delCell(d.id)}</td>
     </tr>
-  `).join('') || '<tr class="empty-row"><td colspan="5">No donations recorded for '+ui.year+'.</td></tr>';
+  `).join('') || '<tr class="empty-row"><td colspan="6">No donations recorded'+emptyNote+' for '+ui.year+'.</td></tr>';
 }
 
 const EXPENSES_SORT_FNS = {
   category: e => (e.title||'').toLowerCase(),
   description: e => (e.description||'').toLowerCase(),
   mode: e => (e.mode||'').toLowerCase(),
+  recordedBy: e => (e.recordedByName||'').toLowerCase(),
   date: e => e.date,
   amount: e => e.amount,
 };
@@ -1326,7 +1413,8 @@ function renderExpenses(v){
     <div class="item-card">
       <div>
         <div class="item-card-title">${escapeHtml(e.title)}${billLink(e.billUrl)} ${paymentBadge(e)}</div>
-        <div class="item-card-sub">${escapeHtml(e.subtitle)} · ${e.dateFmt}</div>
+        <div class="item-card-sub">${escapeHtml(e.subtitle)} · ${e.dateFmt} · by ${escapeHtml(e.recordedByName)}</div>
+        ${e.note ? `<div class="hint" style="margin-top:2px">📝 ${escapeHtml(e.note)}</div>` : ''}
         ${balanceNote(e)}
       </div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -1341,13 +1429,14 @@ function renderExpenses(v){
   document.getElementById('expensesTableBody').innerHTML = sortedExpenses.map(e=>`
     <tr>
       <td class="strong">${escapeHtml(e.title)}${billLink(e.billUrl)} ${paymentBadge(e)}</td>
-      <td>${escapeHtml(e.description)}${balanceNote(e)}</td>
+      <td>${escapeHtml(e.description)}${e.note ? `<div class="hint" style="margin-top:2px">📝 ${escapeHtml(e.note)}</div>` : ''}${balanceNote(e)}</td>
       <td>${escapeHtml(e.mode)}</td>
+      <td>${escapeHtml(e.recordedByName)}</td>
       <td>${e.dateFmt}</td>
       <td class="num" style="color:#DC2626">${e.amountFmt}</td>
       <td>${editCell(e.id)} ${delCell(e.id)}</td>
     </tr>
-  `).join('') || '<tr class="empty-row"><td colspan="6">No expenses recorded'+(ui.expensesPersonFilter?' by '+escapeHtml(ui.expensesPersonFilter.name):'')+' for '+ui.year+'.</td></tr>';
+  `).join('') || '<tr class="empty-row"><td colspan="7">No expenses recorded'+(ui.expensesPersonFilter?' by '+escapeHtml(ui.expensesPersonFilter.name):'')+' for '+ui.year+'.</td></tr>';
 }
 
 const TXN_SORT_FNS = {
@@ -1421,7 +1510,9 @@ function renderPeopleList(){
   el.innerHTML = store.people.map(p=>{
     const linkedProfile = p.profile_id ? store.profiles.find(x=>x.id===p.profile_id) : null;
     const status = linkedProfile
-      ? `<span class="pill-tag" style="background:#DCFCE7;color:#16A34A">Linked → ${escapeHtml(displayName(linkedProfile))}</span>`
+      ? `<span class="pill-tag" style="background:#DCFCE7;color:#16A34A">Linked → ${escapeHtml(displayName(linkedProfile))}</span>
+         <button class="btn-link relink-person" data-id="${p.id}" style="font-size:11px;font-weight:800">Change</button>
+         <button class="btn-link unlink-person" data-id="${p.id}" style="font-size:11px;font-weight:800;color:var(--red)">Unlink</button>`
       : `<button class="btn-link link-person" data-id="${p.id}" style="font-size:11px;font-weight:800">Link to Account</button>`;
     return `
       <div class="user-row">
@@ -1443,6 +1534,12 @@ document.getElementById('saveAddPersonBtn').addEventListener('click', async ()=>
   const name = document.getElementById('personName').value.trim();
   const mobile = document.getElementById('personMobile').value.trim();
   if(!name){ showToast('Please enter a name'); return; }
+  // A second "Ramesh Kumar" under a different id silently fragments his
+  // custody/expense history across two records -- catch it before saving,
+  // but still allow it (two different people can share a name) if confirmed.
+  const dupe = store.people.some(p=>p.full_name.trim().toLowerCase()===name.toLowerCase())
+    || store.profiles.some(p=>(p.full_name||'').trim().toLowerCase()===name.toLowerCase());
+  if(dupe && !(await showConfirm(`Someone named "${name}" is already in the list. Add another with the same name anyway?`, { title:'Possible duplicate' }))) return;
   const btn = document.getElementById('saveAddPersonBtn');
   btn.disabled = true;
   const { error } = await sb.from('ganesh_people').insert({ full_name: name, mobile_number: mobile, created_by: profile.id });
@@ -1456,17 +1553,32 @@ document.getElementById('saveAddPersonBtn').addEventListener('click', async ()=>
 });
 
 let linkingPersonId = null;
+function openLinkPersonModal(p){
+  linkingPersonId = p.id;
+  document.getElementById('linkPersonContext').textContent = p.full_name + (p.mobile_number ? ' · '+p.mobile_number : '');
+  const sel = document.getElementById('linkPersonProfileSelect');
+  sel.innerHTML = store.profiles.map(pr=>`<option value="${pr.id}">${escapeHtml(displayName(pr))}</option>`).join('') || '<option value="">No signed-up accounts yet</option>';
+  if(p.profile_id) sel.value = p.profile_id;
+  document.getElementById('linkPersonModal').classList.remove('hidden');
+}
 document.getElementById('peopleList').addEventListener('click', async (e)=>{
-  const linkBtn = e.target.closest('.link-person');
+  const linkBtn = e.target.closest('.link-person, .relink-person');
   if(linkBtn){
     if(!perms.isAdmin) return;
     const p = store.people.find(x=>x.id===linkBtn.dataset.id);
     if(!p) return;
-    linkingPersonId = p.id;
-    document.getElementById('linkPersonContext').textContent = p.full_name + (p.mobile_number ? ' · '+p.mobile_number : '');
-    const sel = document.getElementById('linkPersonProfileSelect');
-    sel.innerHTML = store.profiles.map(pr=>`<option value="${pr.id}">${escapeHtml(displayName(pr))}</option>`).join('') || '<option value="">No signed-up accounts yet</option>';
-    document.getElementById('linkPersonModal').classList.remove('hidden');
+    openLinkPersonModal(p);
+    return;
+  }
+  const unlinkBtn = e.target.closest('.unlink-person');
+  if(unlinkBtn){
+    if(!perms.isAdmin) return;
+    const p = store.people.find(x=>x.id===unlinkBtn.dataset.id);
+    if(!(await showConfirm(`Unlink ${p?p.full_name:'this person'} from their account? Past entries recorded under them are not affected -- they'll show as "not signed up" again until re-linked.`, { title:'Unlink account?' }))) return;
+    const { error } = await sb.from('ganesh_people').update({ profile_id: null }).eq('id', unlinkBtn.dataset.id);
+    if(error){ showToast('Error: '+error.message); return; }
+    await logActivity('Unlinked team member', p ? p.full_name : unlinkBtn.dataset.id);
+    await fetchAllData(); renderAll(); showToast('Unlinked');
     return;
   }
   const delBtn = e.target.closest('.delete-person');
@@ -1580,12 +1692,12 @@ function applyRoleVisibility(){
 
 /* ---------- toast ---------- */
 let toastTimer;
-function showToast(msg){
+function showToast(msg, durationMs){
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>el.classList.add('hidden'), 2600);
+  toastTimer = setTimeout(()=>el.classList.add('hidden'), durationMs || 2600);
 }
 
 /* ============================================================
@@ -1677,6 +1789,18 @@ document.getElementById('flatsSearch').addEventListener('input', (e)=>{
   clearTimeout(flatsSearchTimer);
   flatsSearchTimer = setTimeout(()=>{ ui.flatsSearch = val; renderAll(); }, 200);
 });
+// Same debounced-search pattern as Flats, for Donations/Expenses/Transactions.
+function wireSearchInput(inputId, uiKey){
+  let timer;
+  document.getElementById(inputId).addEventListener('input', (e)=>{
+    const val = e.target.value;
+    clearTimeout(timer);
+    timer = setTimeout(()=>{ ui[uiKey] = val; renderAll(); }, 200);
+  });
+}
+wireSearchInput('donationsSearch', 'donationsSearch');
+wireSearchInput('expensesSearch', 'expensesSearch');
+wireSearchInput('txnSearch', 'txnSearch');
 document.querySelectorAll('#txnFilterSeg .seg-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{ ui.txnFilter = btn.dataset.filter; renderAll(); });
 });
@@ -2105,7 +2229,7 @@ function renderPledges(v){
         <button class="pledge-delete" data-pledge="${p.id}">🗑</button>
       </div>` : '';
     return `
-      <div class="pledge-row">
+      <div class="pledge-row" id="pledge-row-${p.id}">
         <div class="pledge-row-left">
           <div class="pledge-row-title">${escapeHtml(p.flatLabel)} — ${escapeHtml(p.name)}</div>
           <div class="pledge-row-sub">Pledged ${p.pledgedDateFmt}${p.note ? ' · '+escapeHtml(p.note) : ''}</div>
@@ -2808,6 +2932,21 @@ document.getElementById('donationsCards').addEventListener('click', (e)=>{
   const editBtn = e.target.closest('.edit-donation');
   if(editBtn) openDonationModal(null, editBtn.dataset.id);
 });
+// Clicking a name in the "Collected By" breakdown narrows the donation
+// list/cards down to just that person's entries; clicking it again (or the
+// clear chip) removes the filter -- mirrors Expenses' "Recorded By" filter.
+document.getElementById('collectedByBreakdown').addEventListener('click', (e)=>{
+  const row = e.target.closest('.bar-row-clickable'); if(!row) return;
+  const key = row.dataset.key;
+  ui.donationsPersonFilter = (ui.donationsPersonFilter && ui.donationsPersonFilter.key===key)
+    ? null : { key, name: row.dataset.name };
+  renderAll();
+});
+document.getElementById('donationsPersonFilterChip').addEventListener('click', (e)=>{
+  if(!e.target.closest('#clearDonationsPersonFilter')) return;
+  ui.donationsPersonFilter = null;
+  renderAll();
+});
 document.getElementById('expensesTableBody').addEventListener('click', async (e)=>{
   const editBtn = e.target.closest('.edit-expense');
   if(editBtn){ openExpenseModal(editBtn.dataset.id); return; }
@@ -2964,6 +3103,37 @@ document.getElementById('saveTransferBtn').addEventListener('click', async ()=>{
   renderAll();
   showToast(editingId ? 'Transfer updated ✓' : 'Transfer recorded ✓');
 });
+
+// Clicking a name in "Who Has How Much (Cash in Hand)" opens a breakdown of
+// every donation/expense/transfer that made up their current balance, split
+// into money in vs. money out -- so e.g. multiple transfers handed to
+// someone are easy to find rather than just seeing the net figure.
+const custodyDetailModal = document.getElementById('custodyDetailModal');
+function openCustodyDetailModal(c){
+  document.getElementById('custodyDetailTitle').textContent = c.person;
+  document.getElementById('custodyDetailIn').textContent = c.totalInFmt;
+  document.getElementById('custodyDetailOut').textContent = c.totalOutFmt;
+  const netEl = document.getElementById('custodyDetailNet');
+  netEl.textContent = c.amountFmt;
+  netEl.className = 'custody-detail-value '+(c.isNegative?'red':'green');
+  const row = (x) => `
+    <div class="custody-detail-row">
+      <div><div>${escapeHtml(x.label)}</div><div class="custody-detail-row-date">${x.dateFmt}</div></div>
+      <div class="strong">${x.amountFmt}</div>
+    </div>
+  `;
+  document.getElementById('custodyDetailInList').innerHTML = c.itemsIn.map(row).join('') || '<p class="empty-sub">No money in recorded.</p>';
+  document.getElementById('custodyDetailOutList').innerHTML = c.itemsOut.map(row).join('') || '<p class="empty-sub">No money out recorded.</p>';
+  custodyDetailModal.classList.remove('hidden');
+}
+function closeCustodyDetailModal(){ custodyDetailModal.classList.add('hidden'); }
+document.getElementById('custodyBreakdown').addEventListener('click', (e)=>{
+  const row = e.target.closest('.bar-row-clickable'); if(!row) return;
+  const c = computeView().custodyBreakdown.find(x=>x.key===row.dataset.key);
+  if(c) openCustodyDetailModal(c);
+});
+document.getElementById('closeCustodyDetailModal').addEventListener('click', closeCustodyDetailModal);
+document.getElementById('closeCustodyDetailBtn').addEventListener('click', closeCustodyDetailModal);
 
 /* ============================================================
    CATEGORY BUDGETS
@@ -3436,6 +3606,10 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
   if(settingsErr){ showToast('Error: '+settingsErr.message); btn.disabled=false; return; }
   if(nameChanged) await logActivity('Updated committee name', committeeName);
 
+  // Set when a flat-count reduction is partially skipped, so the final
+  // toast can still say so instead of being silently replaced by "Settings
+  // saved" -- the rest of the form (name/UPI/opening balance) still saves.
+  let flatWarning = null;
   if(desiredCount > store.flats.length){
     const rows = [];
     for(let i=store.flats.length+1;i<=desiredCount;i++){
@@ -3452,7 +3626,7 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
       || store.pledges.some(p=>removeIds.includes(p.flat_id))
       || store.sevaSignups.some(s=>removeIds.includes(s.flat_id));
     if(inUse){
-      showToast('Cannot remove flats that have donations, pledges, or seva sign-ups recorded');
+      flatWarning = 'flat count unchanged — some flats already have donations/pledges/seva data';
     } else if(removeIds.length){
       const { error } = await sb.from('ganesh_flats').delete().in('id', removeIds);
       if(error){ showToast('Error removing flats: '+error.message); btn.disabled=false; return; }
@@ -3480,7 +3654,7 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
   await fetchAllData();
   closeSettingsModal();
   renderAll();
-  showToast('Settings saved');
+  showToast(flatWarning ? 'Settings saved, but '+flatWarning : 'Settings saved', flatWarning ? 4200 : undefined);
 });
 
 /* ============================================================
@@ -3516,19 +3690,26 @@ function donationsTableHtml(v){
     </table>`;
 }
 function expensesTableHtml(v){
+  const paymentNote = (e) => {
+    if(e.paymentType==='full') return '';
+    const label = e.paymentType==='advance' ? 'Advance' : 'Balance/Final';
+    const due = e.balanceDue!=null && e.balanceDue!==0 ? ' — balance due: '+fmtINR(Math.abs(e.balanceDue)) : '';
+    return `<div class="report-note">${label}${due}</div>`;
+  };
   return `
     <div class="report-section-title">Expenses (${v.expensesSorted.length})</div>
     <table>
-      <thead><tr><th>Category</th><th>Description</th><th>Mode</th><th>Date</th><th class="num">Amount</th></tr></thead>
+      <thead><tr><th>Category</th><th>Description</th><th>Mode</th><th>Recorded By</th><th>Date</th><th class="num">Amount</th></tr></thead>
       <tbody>
         ${v.expensesSorted.map(e=>`
           <tr>
             <td>${escapeHtml(e.title)}</td>
-            <td>${escapeHtml(e.description)}</td>
+            <td>${escapeHtml(e.description)}${e.note?`<div class="report-note">Note: ${escapeHtml(e.note)}</div>`:''}${paymentNote(e)}</td>
             <td>${escapeHtml(e.mode)}</td>
+            <td>${escapeHtml(e.recordedByName)}</td>
             <td>${e.dateFmt}</td>
             <td class="num">${fmtINR(e.amount)}</td>
-          </tr>`).join('') || '<tr><td colspan="5">No expenses recorded.</td></tr>'}
+          </tr>`).join('') || '<tr><td colspan="6">No expenses recorded.</td></tr>'}
       </tbody>
     </table>
     <div class="report-section-title">Expenses by Category</div>
@@ -3742,10 +3923,16 @@ function exportDonationsCSV(){
   const rows = v.donationsSorted.map(d=>[d.date, d.title, d.kind==='in_kind'?'In-Kind':'Cash', d.mode||'', d.amount, d.itemDescription||'', d.collectedByName||'', d.note||'']);
   downloadCSV(`donations-${ui.year}-${todayISO()}.csv`, ['Date','Flat / Donor','Type','Mode','Amount','Item (if in-kind)','Collected By','Note'], rows);
 }
+const PAYMENT_TYPE_LABELS = { full:'Full Payment', advance:'Advance', balance:'Balance/Final' };
 function exportExpensesCSV(){
   const v = computeView();
-  const rows = v.expensesSorted.map(e=>[e.date, e.title, e.description, e.mode, e.amount, e.billUrl?'Yes':'No']);
-  downloadCSV(`expenses-${ui.year}-${todayISO()}.csv`, ['Date','Category','Description','Mode','Amount','Bill Attached'], rows);
+  const rows = v.expensesSorted.map(e=>[
+    e.date, e.title, e.description, e.mode, e.recordedByName, e.amount,
+    PAYMENT_TYPE_LABELS[e.paymentType] || e.paymentType,
+    e.balanceDue!=null ? e.balanceDue : '',
+    e.note, e.billUrl?'Yes':'No',
+  ]);
+  downloadCSV(`expenses-${ui.year}-${todayISO()}.csv`, ['Date','Category','Description','Mode','Recorded By','Amount','Payment Type','Balance Due','Note','Bill Attached'], rows);
 }
 function exportTransactionsCSV(){
   const v = computeView();
@@ -3803,7 +3990,7 @@ document.getElementById('clearAllYearsBtn').addEventListener('click', async ()=>
 });
 
 /* ---------- close modals on overlay click ---------- */
-const ALL_MODALS = [donationModal, pledgeModal, bulkImportModal, expenseModal, flatModal, settingsModal, sevaDayModal, sevaSignupModal, transferModal, budgetModal, compareYearsModal];
+const ALL_MODALS = [donationModal, pledgeModal, bulkImportModal, expenseModal, flatModal, settingsModal, sevaDayModal, sevaSignupModal, transferModal, custodyDetailModal, budgetModal, compareYearsModal];
 ALL_MODALS.forEach(modal=>{
   modal.addEventListener('click', (e)=>{ if(e.target===modal){ modal.classList.add('hidden'); if(modal===donationModal){ ui.pledgeBeingFulfilled = null; ui.editingDonationId = null; } if(modal===expenseModal) ui.editingExpenseId = null; if(modal===transferModal) ui.editingTransferId = null; if(modal===sevaDayModal) ui.editingSevaDayId = null; } });
 });

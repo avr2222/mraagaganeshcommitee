@@ -384,11 +384,17 @@
         <div id="collectedByBreakdown" class="stack-bars"></div>
       </div>
 
+      <div id="donationsPersonFilterChip"></div>
+
+      <div class="toolbar">
+        <input type="search" class="search-input" id="donationsSearch" placeholder="Search donor, flat, mode, note...">
+      </div>
+
       <div class="cards-list" id="donationsCards"></div>
 
       <div class="table-panel">
         <table class="data-table">
-          <thead><tr><th data-sort-key="donor">DONOR</th><th data-sort-key="mode">MODE</th><th data-sort-key="date">DATE</th><th class="num" data-sort-key="amount">AMOUNT</th><th></th></tr></thead>
+          <thead><tr><th data-sort-key="donor">DONOR</th><th data-sort-key="mode">MODE</th><th data-sort-key="collectedBy">COLLECTED BY</th><th data-sort-key="date">DATE</th><th class="num" data-sort-key="amount">AMOUNT</th><th></th></tr></thead>
           <tbody id="donationsTableBody"></tbody>
         </table>
       </div>
@@ -420,11 +426,15 @@
 
       <div id="expensesPersonFilterChip"></div>
 
+      <div class="toolbar">
+        <input type="search" class="search-input" id="expensesSearch" placeholder="Search category, description, note...">
+      </div>
+
       <div class="cards-list" id="expensesCards"></div>
 
       <div class="table-panel">
         <table class="data-table">
-          <thead><tr><th data-sort-key="category">CATEGORY</th><th data-sort-key="description">DESCRIPTION</th><th data-sort-key="mode">MODE</th><th data-sort-key="date">DATE</th><th class="num" data-sort-key="amount">AMOUNT</th><th></th></tr></thead>
+          <thead><tr><th data-sort-key="category">CATEGORY</th><th data-sort-key="description">DESCRIPTION</th><th data-sort-key="mode">MODE</th><th data-sort-key="recordedBy">RECORDED BY</th><th data-sort-key="date">DATE</th><th class="num" data-sort-key="amount">AMOUNT</th><th></th></tr></thead>
           <tbody id="expensesTableBody"></tbody>
         </table>
       </div>
@@ -439,10 +449,13 @@
           <button class="btn btn-ghost" id="exportBothBtn">⬇ Export Combined Report</button>
         </div>
       </div>
-      <div class="segmented" id="txnFilterSeg" style="margin-bottom:16px;width:fit-content">
-        <button class="seg-btn" data-filter="all">All</button>
-        <button class="seg-btn" data-filter="in">Money In</button>
-        <button class="seg-btn" data-filter="out">Money Out</button>
+      <div class="toolbar">
+        <div class="segmented" id="txnFilterSeg">
+          <button class="seg-btn" data-filter="all">All</button>
+          <button class="seg-btn" data-filter="in">Money In</button>
+          <button class="seg-btn" data-filter="out">Money Out</button>
+        </div>
+        <input type="search" class="search-input" id="txnSearch" placeholder="Search transactions...">
       </div>
 
       <div class="cards-list" id="txnCards"></div>
@@ -934,6 +947,43 @@
       <div class="modal-actions">
         <button class="btn btn-flat" id="cancelTransferBtn">Cancel</button>
         <button class="btn btn-orange" id="saveTransferBtn">Save Transfer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cash custody detail modal -->
+  <div class="modal-overlay hidden" id="custodyDetailModal">
+    <div class="modal" style="max-width:480px">
+      <div class="modal-head">
+        <div class="modal-title" id="custodyDetailTitle">Cash Custody</div>
+        <button class="modal-close" id="closeCustodyDetailModal" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="custody-detail-summary">
+          <div class="custody-detail-stat">
+            <div class="custody-detail-label">Total In</div>
+            <div class="custody-detail-value green" id="custodyDetailIn">₹0</div>
+          </div>
+          <div class="custody-detail-stat">
+            <div class="custody-detail-label">Total Out</div>
+            <div class="custody-detail-value red" id="custodyDetailOut">₹0</div>
+          </div>
+          <div class="custody-detail-stat">
+            <div class="custody-detail-label">Net (Cash in Hand)</div>
+            <div class="custody-detail-value" id="custodyDetailNet">₹0</div>
+          </div>
+        </div>
+        <div class="custody-detail-section">
+          <div class="custody-detail-section-title">Money In</div>
+          <div id="custodyDetailInList" class="custody-detail-list"></div>
+        </div>
+        <div class="custody-detail-section">
+          <div class="custody-detail-section-title">Money Out</div>
+          <div id="custodyDetailOutList" class="custody-detail-list"></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-flat" id="closeCustodyDetailBtn">Close</button>
       </div>
     </div>
   </div>
