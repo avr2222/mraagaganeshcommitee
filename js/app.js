@@ -125,6 +125,23 @@ function assignablePeopleOptionsHtml(){
   ).join('');
 }
 
+// Resolve a recorded_by/collected_by id to its CURRENT display name, rather
+// than the name text snapshotted on the transaction when it was saved --
+// otherwise a "not signed up" placeholder name never updates (and splits
+// into a second bucket in per-person breakdowns) once that person links to
+// a real account and starts recording under their profile name instead.
+function currentPersonName(id, fallbackName){
+  if(!id) return fallbackName || 'Unassigned';
+  const prof = store.profiles.find(p=>p.id===id);
+  if(prof) return displayName(prof);
+  const person = store.people.find(p=>p.id===id);
+  if(person){
+    const linked = person.profile_id ? store.profiles.find(p=>p.id===person.profile_id) : null;
+    return linked ? displayName(linked) : person.full_name+' (not signed up)';
+  }
+  return fallbackName || 'Unassigned';
+}
+
 /* ---------- sortable table headers ---------- */
 // Applies a {key, dir} sort state to a list using a per-key value-extractor
 // map. Used by every data table (Flats, Donations, Expenses, Transactions)
@@ -196,6 +213,9 @@ const ui = {
   editingSevaDayId:null,
   authMode:'signin',
   pledgeBeingFulfilled:null,
+  // Set by clicking a name in the Expenses "Recorded By" breakdown --
+  // {key, name} of the person to narrow the expense list/cards down to.
+  expensesPersonFilter:null,
   // Sortable table headers -- default order matches each table's previous
   // fixed behavior (flats by flat number, everything else by newest first),
   // so nothing changes until a resident clicks a column header.
@@ -513,6 +533,8 @@ function computeView(){
       date:e.date, dateFmt:fmtDate(e.date), ts:e.created_at || e.date,
       billUrl: e.bill_url || null,
       paymentType, totalExpected, balanceDue,
+      recordedByKey: e.recorded_by || 'unassigned',
+      recordedByName: currentPersonName(e.recorded_by, e.recorded_by_name),
     };
   });
   const transactions = donationTx.concat(expenseTx).sort((a,b)=> (b.ts>a.ts?1:-1));
@@ -524,6 +546,9 @@ function computeView(){
 
   const donationsSorted = [...donationTx].sort((a,b)=> (b.ts>a.ts?1:-1));
   const expensesSorted = [...expenseTx].sort((a,b)=> (b.ts>a.ts?1:-1));
+  const filteredExpensesSorted = ui.expensesPersonFilter
+    ? expensesSorted.filter(e => e.recordedByKey === ui.expensesPersonFilter.key)
+    : expensesSorted;
 
   const catTotals = {};
   expenses.forEach(e=>{ catTotals[e.category] = (catTotals[e.category]||0) + e.amount; });
@@ -570,11 +595,19 @@ function computeView(){
     person:who, amount:collectedTotals[who], amountFmt:fmtINR(collectedTotals[who]), pct: Math.round(collectedTotals[who]/collectedMax*100),
   }));
 
+  // Keyed by id (not the name text) so a person's expenses stay in one
+  // bucket even if their recorded_by_name snapshot changes over time --
+  // e.g. after a "not signed up" placeholder gets linked to a real account.
   const recordedTotals = {};
-  expenses.forEach(e=>{ const who = e.recorded_by_name || 'Unassigned'; recordedTotals[who] = (recordedTotals[who]||0) + e.amount; });
-  const recordedMax = Math.max(1, ...Object.values(recordedTotals), 1);
-  const recordedByBreakdown = Object.keys(recordedTotals).sort((a,b)=>recordedTotals[b]-recordedTotals[a]).map(who=>({
-    person:who, amount:recordedTotals[who], amountFmt:fmtINR(recordedTotals[who]), pct: Math.round(recordedTotals[who]/recordedMax*100),
+  expenses.forEach(e=>{
+    const key = e.recorded_by || 'unassigned';
+    if(!recordedTotals[key]) recordedTotals[key] = { name: currentPersonName(e.recorded_by, e.recorded_by_name), amount:0 };
+    recordedTotals[key].amount += e.amount;
+  });
+  const recordedMax = Math.max(1, ...Object.values(recordedTotals).map(x=>x.amount), 1);
+  const recordedByBreakdown = Object.keys(recordedTotals).sort((a,b)=>recordedTotals[b].amount-recordedTotals[a].amount).map(key=>({
+    key, person:recordedTotals[key].name, amount:recordedTotals[key].amount,
+    amountFmt:fmtINR(recordedTotals[key].amount), pct: Math.round(recordedTotals[key].amount/recordedMax*100),
   }));
 
   // Fund custody: who is currently holding how much (collected − spent − handed off + received)
@@ -692,7 +725,7 @@ function computeView(){
     totalCollected, cashCollected, inKindValue, totalExpenses, balance, openingBalance,
     pendingRows, pendingBalanceDue, availableToSpend,
     contributedCount, notContributedCount, totalFlats, contributedPct, maxIE,
-    recentTransactions, filteredTransactions, donationsSorted, expensesSorted,
+    recentTransactions, filteredTransactions, donationsSorted, expensesSorted, filteredExpensesSorted,
     categoryBreakdown, collectedByBreakdown, recordedByBreakdown,
     budgetBreakdown, budgetDonutSegments, totalBudgetAllocated, overallBudgetPctUsed,
     custodyBreakdown, recentTransfers, yearComparison,
@@ -1246,15 +1279,23 @@ function renderExpenses(v){
       <div class="bar-track"><div class="bar-fill red" style="width:${c.pct}%"></div></div>
     </div>
   `).join('') || '<p class="empty-sub">No expenses recorded for '+ui.year+'.</p>';
+  const activeFilterKey = ui.expensesPersonFilter ? ui.expensesPersonFilter.key : null;
   document.getElementById('recordedByBreakdown').innerHTML = v.recordedByBreakdown.map(c=>`
-    <div>
+    <div class="bar-row-clickable${c.key===activeFilterKey?' active':''}" data-key="${escapeHtml(c.key)}" data-name="${escapeHtml(c.person)}" title="Click to see all expenses recorded by ${escapeHtml(c.person)}">
       <div class="stack-row"><span>${escapeHtml(c.person)}</span><span class="red">${c.amountFmt}</span></div>
       <div class="bar-track"><div class="bar-fill red" style="width:${c.pct}%"></div></div>
     </div>
   `).join('') || '<p class="empty-sub">No expenses recorded for '+ui.year+'.</p>';
 
+  document.getElementById('expensesPersonFilterChip').innerHTML = ui.expensesPersonFilter ? `
+    <div class="person-filter-chip">
+      Showing expenses recorded by <strong>${escapeHtml(ui.expensesPersonFilter.name)}</strong>
+      <button class="person-filter-clear" id="clearExpensesPersonFilter">✕ Clear</button>
+    </div>
+  ` : '';
+
   updateSortHeaderUI('#screen-expenses .data-table thead', ui.expensesSort);
-  const sortedExpenses = applySort(v.expensesSorted, ui.expensesSort, EXPENSES_SORT_FNS);
+  const sortedExpenses = applySort(v.filteredExpensesSorted, ui.expensesSort, EXPENSES_SORT_FNS);
   const billLink = (url) => url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="View bill photo" style="margin-left:8px">📎</a>` : '';
   const editExpBtn = (id) => perms.canExpenses ? `<button class="item-card-edit edit-expense" data-id="${id}" title="Edit">✎</button>` : '';
   // Advance/Balance entries get a small badge + balance-due note so a
@@ -1293,7 +1334,7 @@ function renderExpenses(v){
         ${editExpBtn(e.id)}
       </div>
     </div>
-  `).join('') || '<p class="empty-sub">No expenses recorded for '+ui.year+'.</p>';
+  `).join('') || '<p class="empty-sub">No expenses recorded'+(ui.expensesPersonFilter?' by '+escapeHtml(ui.expensesPersonFilter.name):'')+' for '+ui.year+'.</p>';
 
   const delCell = (id) => perms.canExpenses ? `<button class="row-edit-btn delete-expense" data-id="${id}" title="Delete">🗑</button>` : '';
   const editCell = (id) => perms.canExpenses ? `<button class="row-edit-btn edit-expense" data-id="${id}" title="Edit">✎</button>` : '';
@@ -1306,7 +1347,7 @@ function renderExpenses(v){
       <td class="num" style="color:#DC2626">${e.amountFmt}</td>
       <td>${editCell(e.id)} ${delCell(e.id)}</td>
     </tr>
-  `).join('') || '<tr class="empty-row"><td colspan="6">No expenses recorded for '+ui.year+'.</td></tr>';
+  `).join('') || '<tr class="empty-row"><td colspan="6">No expenses recorded'+(ui.expensesPersonFilter?' by '+escapeHtml(ui.expensesPersonFilter.name):'')+' for '+ui.year+'.</td></tr>';
 }
 
 const TXN_SORT_FNS = {
@@ -2634,6 +2675,21 @@ document.getElementById('addExpenseBtnList').addEventListener('click', ()=>openE
 document.getElementById('expensesCards').addEventListener('click', (e)=>{
   const btn = e.target.closest('.edit-expense'); if(!btn) return;
   openExpenseModal(btn.dataset.id);
+});
+// Clicking a name in the "Recorded By" breakdown narrows the expense
+// list/cards down to just that person's entries; clicking it again (or the
+// clear chip) removes the filter.
+document.getElementById('recordedByBreakdown').addEventListener('click', (e)=>{
+  const row = e.target.closest('.bar-row-clickable'); if(!row) return;
+  const key = row.dataset.key;
+  ui.expensesPersonFilter = (ui.expensesPersonFilter && ui.expensesPersonFilter.key===key)
+    ? null : { key, name: row.dataset.name };
+  renderAll();
+});
+document.getElementById('expensesPersonFilterChip').addEventListener('click', (e)=>{
+  if(!e.target.closest('#clearExpensesPersonFilter')) return;
+  ui.expensesPersonFilter = null;
+  renderAll();
 });
 document.getElementById('closeExpenseModal').addEventListener('click', closeExpenseModal);
 document.getElementById('cancelExpenseBtn').addEventListener('click', closeExpenseModal);
