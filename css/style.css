@@ -164,6 +164,17 @@ button{cursor:pointer}
 .stack-bars{display:flex;flex-direction:column;gap:14px}
 .stack-row{display:flex;justify-content:space-between;font-size:13px;font-weight:600;color:var(--slate-600);margin-bottom:6px}
 
+.bar-row-clickable{cursor:pointer;border-radius:10px;padding:6px;margin:-6px;transition:background .15s ease}
+@media (hover:hover){ .bar-row-clickable:hover{background:var(--slate-100)} }
+.bar-row-clickable.active{background:#FEE2E2}
+.bar-row-clickable.active .bar-track{background:#FCA5A5}
+
+.person-filter-chip{display:flex;align-items:center;gap:10px;background:var(--slate-100);color:var(--slate-600);
+  border-radius:12px;padding:10px 14px;font-size:13px;margin-bottom:16px}
+.person-filter-chip strong{color:var(--ink)}
+.person-filter-clear{margin-left:auto;border:none;background:#fff;color:var(--red);font-size:12px;font-weight:700;
+  border-radius:8px;padding:5px 10px;flex-shrink:0}
+
 .txn-list{display:flex;flex-direction:column}
 .txn-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--slate-100)}
 .txn-row:last-child{border-bottom:none}
