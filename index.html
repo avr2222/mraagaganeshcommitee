@@ -384,11 +384,17 @@
         <div id="collectedByBreakdown" class="stack-bars"></div>
       </div>
 
+      <div id="donationsPersonFilterChip"></div>
+
+      <div class="toolbar">
+        <input type="search" class="search-input" id="donationsSearch" placeholder="Search donor, flat, mode, note...">
+      </div>
+
       <div class="cards-list" id="donationsCards"></div>
 
       <div class="table-panel">
         <table class="data-table">
-          <thead><tr><th data-sort-key="donor">DONOR</th><th data-sort-key="mode">MODE</th><th data-sort-key="date">DATE</th><th class="num" data-sort-key="amount">AMOUNT</th><th></th></tr></thead>
+          <thead><tr><th data-sort-key="donor">DONOR</th><th data-sort-key="mode">MODE</th><th data-sort-key="collectedBy">COLLECTED BY</th><th data-sort-key="date">DATE</th><th class="num" data-sort-key="amount">AMOUNT</th><th></th></tr></thead>
           <tbody id="donationsTableBody"></tbody>
         </table>
       </div>
@@ -420,6 +426,10 @@
 
       <div id="expensesPersonFilterChip"></div>
 
+      <div class="toolbar">
+        <input type="search" class="search-input" id="expensesSearch" placeholder="Search category, description, note...">
+      </div>
+
       <div class="cards-list" id="expensesCards"></div>
 
       <div class="table-panel">
@@ -439,10 +449,13 @@
           <button class="btn btn-ghost" id="exportBothBtn">⬇ Export Combined Report</button>
         </div>
       </div>
-      <div class="segmented" id="txnFilterSeg" style="margin-bottom:16px;width:fit-content">
-        <button class="seg-btn" data-filter="all">All</button>
-        <button class="seg-btn" data-filter="in">Money In</button>
-        <button class="seg-btn" data-filter="out">Money Out</button>
+      <div class="toolbar">
+        <div class="segmented" id="txnFilterSeg">
+          <button class="seg-btn" data-filter="all">All</button>
+          <button class="seg-btn" data-filter="in">Money In</button>
+          <button class="seg-btn" data-filter="out">Money Out</button>
+        </div>
+        <input type="search" class="search-input" id="txnSearch" placeholder="Search transactions...">
       </div>
 
       <div class="cards-list" id="txnCards"></div>
