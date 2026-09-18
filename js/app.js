@@ -496,14 +496,38 @@ function computeView(){
   // "spoken for" even though it hasn't left the account yet, so treating
   // the full Current Balance as free-to-spend would overstate what's
   // actually safe to commit to new expenses.
-  const pendingRows = expenses.filter(e=>{
+  //
+  // Entries aren't linked to each other in the data model (see the Add
+  // Expense payment-type note), so a commitment paid off in more than one
+  // step -- an Advance, then one or more Balance/Final follow-ups -- exists
+  // as several separate rows. Treating each row's own balanceDue as a
+  // separate "still owed" amount double-counts it: the Advance's balanceDue
+  // is stale the moment a follow-up payment exists. Group by category +
+  // description (exact text match -- "+ Add Payment" copies both over
+  // verbatim so a correctly-continued chain always matches) and use the
+  // group's Advance entry for the true overall total, so only the current,
+  // truly-remaining amount is counted once.
+  const pendingCandidates = expenses.filter(e=>{
     const pt = e.payment_type || 'full';
-    if(pt==='full' || e.total_expected==null) return false;
-    return (Number(e.total_expected) - e.amount) > 0;
-  }).map(e=>({
-    id: e.id, category: e.category, description: e.description,
-    due: Number(e.total_expected) - e.amount, dueFmt: fmtINR(Number(e.total_expected) - e.amount),
-  }));
+    return pt!=='full' && e.total_expected!=null;
+  });
+  const pendingGroups = {};
+  pendingCandidates.forEach(e=>{
+    const key = (e.category||'').trim().toLowerCase()+'|'+(e.description||'').trim().toLowerCase();
+    if(!pendingGroups[key]) pendingGroups[key] = { category: e.category, description: e.description, entries: [] };
+    pendingGroups[key].entries.push(e);
+  });
+  const pendingRows = Object.values(pendingGroups).map(g=>{
+    const advanceEntry = g.entries.find(e=>(e.payment_type||'full')==='advance');
+    const totalExpected = advanceEntry ? Number(advanceEntry.total_expected) : Math.max(...g.entries.map(e=>Number(e.total_expected)||0));
+    const totalPaid = g.entries.reduce((s,e)=>s+Number(e.amount||0), 0);
+    const due = totalExpected - totalPaid;
+    const latest = [...g.entries].sort((a,b)=> ((b.created_at||b.date)>(a.created_at||a.date)?1:-1))[0];
+    return {
+      id: latest.id, category: g.category, description: g.description,
+      due, dueFmt: fmtINR(due), paymentCount: g.entries.length,
+    };
+  }).filter(r=>r.due>0.5); // >0.5 tolerates float rounding rather than a hard >0
   const pendingBalanceDue = pendingRows.reduce((s,r)=>s+r.due, 0);
   const availableToSpend = balance - pendingBalanceDue;
 
@@ -901,9 +925,14 @@ function renderDashboard(v){
   document.getElementById('pendingBalanceSub').textContent =
     v.pendingRows.length + ' expense' + (v.pendingRows.length===1?'':'s') + ' with a balance still due';
   document.getElementById('pendingBalanceList').innerHTML = v.pendingRows.map(r=>`
-    <div class="custody-detail-row${perms.canExpenses?' bar-row-clickable':''}" ${perms.canExpenses?`data-expense-id="${r.id}"`:''}>
-      <div>${escapeHtml(r.category)} — ${escapeHtml(r.description)}</div>
-      <div class="strong" style="color:var(--red)">${r.dueFmt}</div>
+    <div class="custody-detail-row">
+      <div${perms.canExpenses?' class="bar-row-clickable" data-expense-id="'+r.id+'"':''} style="flex:1;cursor:${perms.canExpenses?'pointer':'default'}">
+        ${escapeHtml(r.category)} — ${escapeHtml(r.description)}${r.paymentCount>1?' <span class="hint" style="display:inline">('+r.paymentCount+' payments so far)</span>':''}
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="strong" style="color:var(--red)">${r.dueFmt}</div>
+        ${perms.canExpenses ? `<button class="btn-link add-payment-btn" data-source-id="${r.id}" style="font-size:11px;font-weight:800;white-space:nowrap">+ Add Payment</button>` : ''}
+      </div>
     </div>
   `).join('');
 
@@ -1413,6 +1442,7 @@ function renderExpenses(v){
     const color = e.paymentType==='advance' ? '#D97706' : '#2563EB';
     return `<span class="pill-tag" style="background:${color}1a;color:${color}">${label}</span>`;
   };
+  const addPaymentLink = (e) => perms.canExpenses ? ` <button class="btn-link add-payment-btn" data-source-id="${e.id}" style="font-size:11px;font-weight:800">+ Add Payment</button>` : '';
   const balanceNote = (e) => {
     if(e.paymentType==='full' || e.balanceDue==null) return '';
     // On an Advance, totalExpected is the whole cost, so balanceDue reads
@@ -1420,11 +1450,11 @@ function renderExpenses(v){
     // means "what was still owed going in", so balanceDue reads as what's
     // still left after this specific payment -- no "of Y total" suffix.
     if(e.paymentType==='advance'){
-      if(e.balanceDue>0) return `<div class="hint" style="color:#D97706;margin-top:2px">Balance due: ${fmtINR(e.balanceDue)} of ${fmtINR(e.totalExpected)} total</div>`;
+      if(e.balanceDue>0) return `<div class="hint" style="color:#D97706;margin-top:2px">Balance due: ${fmtINR(e.balanceDue)} of ${fmtINR(e.totalExpected)} total${addPaymentLink(e)}</div>`;
       if(e.balanceDue===0) return `<div class="hint" style="color:#16A34A;margin-top:2px">Fully settled — ${fmtINR(e.totalExpected)} total</div>`;
       return `<div class="hint" style="color:#DC2626;margin-top:2px">${fmtINR(-e.balanceDue)} over the expected ${fmtINR(e.totalExpected)} total</div>`;
     }
-    if(e.balanceDue>0) return `<div class="hint" style="color:#D97706;margin-top:2px">Still owed after this payment: ${fmtINR(e.balanceDue)}</div>`;
+    if(e.balanceDue>0) return `<div class="hint" style="color:#D97706;margin-top:2px">Still owed after this payment: ${fmtINR(e.balanceDue)}${addPaymentLink(e)}</div>`;
     if(e.balanceDue===0) return `<div class="hint" style="color:#16A34A;margin-top:2px">Fully settled</div>`;
     return `<div class="hint" style="color:#DC2626;margin-top:2px">${fmtINR(-e.balanceDue)} more than what was owed</div>`;
   };
@@ -1791,6 +1821,8 @@ document.getElementById('viewPendingBalanceBtn').addEventListener('click', ()=>{
   goScreen('expenses');
 });
 document.getElementById('pendingBalanceList').addEventListener('click', (e)=>{
+  const addBtn = e.target.closest('.add-payment-btn');
+  if(addBtn){ openContinuePaymentModal(addBtn.dataset.sourceId); return; }
   const row = e.target.closest('[data-expense-id]'); if(!row) return;
   goScreen('expenses');
   openExpenseModal(row.dataset.expenseId);
@@ -2821,9 +2853,32 @@ function openExpenseModal(expenseId){
   expenseModal.classList.remove('hidden');
 }
 function closeExpenseModal(){ expenseModal.classList.add('hidden'); ui.editingExpenseId = null; }
+// Continues an existing advance/balance commitment as a new linked payment,
+// rather than the user recreating it from scratch as an unrelated "Advance"
+// (which is what silently splits one commitment into two separate balances
+// on the dashboard). Pre-fills the same category/description, sets the
+// payment type to Balance/Final, and carries over exactly what's still owed
+// so the running balance stays correct.
+function openContinuePaymentModal(sourceId){
+  const src = store.expenses.find(x=>x.id===sourceId);
+  if(!src) return;
+  const totalExpected = src.total_expected!=null ? Number(src.total_expected) : null;
+  const stillOwed = totalExpected!=null ? totalExpected - Number(src.amount) : null;
+  openExpenseModal();
+  document.getElementById('expCategory').value = src.category;
+  document.getElementById('expDesc').value = src.description;
+  setModeButtons('expModeRow', src.mode || 'Cash');
+  setPaymentTypeButtons('balance');
+  document.getElementById('expTotalExpected').value = stillOwed!=null ? stillOwed : '';
+  document.getElementById('expTotalExpected').dispatchEvent(new Event('input'));
+  updateExpBalanceDueHint();
+  document.getElementById('expAmount').focus();
+}
 document.getElementById('addExpenseBtnDash').addEventListener('click', ()=>openExpenseModal());
 document.getElementById('addExpenseBtnList').addEventListener('click', ()=>openExpenseModal());
 document.getElementById('expensesCards').addEventListener('click', (e)=>{
+  const payBtn = e.target.closest('.add-payment-btn');
+  if(payBtn){ openContinuePaymentModal(payBtn.dataset.sourceId); return; }
   const btn = e.target.closest('.edit-expense'); if(!btn) return;
   openExpenseModal(btn.dataset.id);
 });
@@ -2974,6 +3029,8 @@ document.getElementById('donationsPersonFilterChip').addEventListener('click', (
   renderAll();
 });
 document.getElementById('expensesTableBody').addEventListener('click', async (e)=>{
+  const payBtn = e.target.closest('.add-payment-btn');
+  if(payBtn){ openContinuePaymentModal(payBtn.dataset.sourceId); return; }
   const editBtn = e.target.closest('.edit-expense');
   if(editBtn){ openExpenseModal(editBtn.dataset.id); return; }
   const btn = e.target.closest('.delete-expense'); if(!btn) return;
