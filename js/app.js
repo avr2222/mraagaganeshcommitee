@@ -221,6 +221,10 @@ const ui = {
   expensesPersonFilter:null,
   // Same idea for Donations' "Collected By" breakdown.
   donationsPersonFilter:null,
+  // Set by the dashboard's "View Expenses" (Committed — Balance Still Owed)
+  // button, to narrow the expense list down to just advance/balance entries
+  // that still owe money.
+  expensesPendingOnly:false,
   // Sortable table headers -- default order matches each table's previous
   // fixed behavior (flats by flat number, everything else by newest first),
   // so nothing changes until a resident clicks a column header.
@@ -498,7 +502,7 @@ function computeView(){
     return (Number(e.total_expected) - e.amount) > 0;
   }).map(e=>({
     id: e.id, category: e.category, description: e.description,
-    due: Number(e.total_expected) - e.amount,
+    due: Number(e.total_expected) - e.amount, dueFmt: fmtINR(Number(e.total_expected) - e.amount),
   }));
   const pendingBalanceDue = pendingRows.reduce((s,r)=>s+r.due, 0);
   const availableToSpend = balance - pendingBalanceDue;
@@ -568,6 +572,7 @@ function computeView(){
   let filteredExpensesSorted = ui.expensesPersonFilter
     ? expensesSorted.filter(e => e.recordedByKey === ui.expensesPersonFilter.key)
     : expensesSorted;
+  if(ui.expensesPendingOnly) filteredExpensesSorted = filteredExpensesSorted.filter(e => e.balanceDue!=null && e.balanceDue>0);
   const expQ = ui.expensesSearch.trim().toLowerCase();
   if(expQ) filteredExpensesSorted = filteredExpensesSorted.filter(e =>
     (e.title||'').toLowerCase().includes(expQ) || (e.description||'').toLowerCase().includes(expQ) ||
@@ -895,6 +900,12 @@ function renderDashboard(v){
   document.getElementById('pendingBalanceAmt').textContent = fmtINR(v.pendingBalanceDue);
   document.getElementById('pendingBalanceSub').textContent =
     v.pendingRows.length + ' expense' + (v.pendingRows.length===1?'':'s') + ' with a balance still due';
+  document.getElementById('pendingBalanceList').innerHTML = v.pendingRows.map(r=>`
+    <div class="custody-detail-row${perms.canExpenses?' bar-row-clickable':''}" ${perms.canExpenses?`data-expense-id="${r.id}"`:''}>
+      <div>${escapeHtml(r.category)} — ${escapeHtml(r.description)}</div>
+      <div class="strong" style="color:var(--red)">${r.dueFmt}</div>
+    </div>
+  `).join('');
 
   document.getElementById('flatsProgressTitle').textContent = v.contributedCount+' / '+v.totalFlats+' Flats Contributed';
   document.getElementById('flatsProgressBar').style.width = v.contributedPct+'%';
@@ -1374,12 +1385,20 @@ function renderExpenses(v){
     </div>
   `).join('') || '<p class="empty-sub">No expenses recorded for '+ui.year+'.</p>';
 
-  document.getElementById('expensesPersonFilterChip').innerHTML = ui.expensesPersonFilter ? `
+  const filterChips = [];
+  if(ui.expensesPersonFilter) filterChips.push(`
     <div class="person-filter-chip">
       Showing expenses recorded by <strong>${escapeHtml(ui.expensesPersonFilter.name)}</strong>
       <button class="person-filter-clear" id="clearExpensesPersonFilter">✕ Clear</button>
     </div>
-  ` : '';
+  `);
+  if(ui.expensesPendingOnly) filterChips.push(`
+    <div class="person-filter-chip">
+      Showing only expenses with a <strong>balance still due</strong>
+      <button class="person-filter-clear" id="clearExpensesPendingFilter">✕ Clear</button>
+    </div>
+  `);
+  document.getElementById('expensesPersonFilterChip').innerHTML = filterChips.join('');
 
   updateSortHeaderUI('#screen-expenses .data-table thead', ui.expensesSort);
   const sortedExpenses = applySort(v.filteredExpensesSorted, ui.expensesSort, EXPENSES_SORT_FNS);
@@ -1767,7 +1786,15 @@ document.querySelectorAll('.nav-btn, .bn-btn').forEach(btn=>{
 document.getElementById('viewFlatsBtn').addEventListener('click', ()=>{ ui.flatsFilter='all'; goScreen('flats'); });
 document.getElementById('viewAllTxnBtn').addEventListener('click', ()=> goScreen('transactions'));
 document.getElementById('viewSevaBtn').addEventListener('click', ()=> goScreen('prasadam'));
-document.getElementById('viewPendingBalanceBtn').addEventListener('click', ()=> goScreen('expenses'));
+document.getElementById('viewPendingBalanceBtn').addEventListener('click', ()=>{
+  ui.expensesPendingOnly = true;
+  goScreen('expenses');
+});
+document.getElementById('pendingBalanceList').addEventListener('click', (e)=>{
+  const row = e.target.closest('[data-expense-id]'); if(!row) return;
+  goScreen('expenses');
+  openExpenseModal(row.dataset.expenseId);
+});
 
 function renderSevaProgress(v){
   const panel = document.getElementById('sevaProgressPanel');
@@ -2811,9 +2838,8 @@ document.getElementById('recordedByBreakdown').addEventListener('click', (e)=>{
   renderAll();
 });
 document.getElementById('expensesPersonFilterChip').addEventListener('click', (e)=>{
-  if(!e.target.closest('#clearExpensesPersonFilter')) return;
-  ui.expensesPersonFilter = null;
-  renderAll();
+  if(e.target.closest('#clearExpensesPersonFilter')){ ui.expensesPersonFilter = null; renderAll(); }
+  else if(e.target.closest('#clearExpensesPendingFilter')){ ui.expensesPendingOnly = false; renderAll(); }
 });
 document.getElementById('closeExpenseModal').addEventListener('click', closeExpenseModal);
 document.getElementById('cancelExpenseBtn').addEventListener('click', closeExpenseModal);
