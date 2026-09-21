@@ -109,6 +109,14 @@ function escapeHtml(str){
 }
 const ROLE_LABELS = { super_admin:'Super Admin', treasurer:'Treasurer', donation_collector:'Donation Collector', viewer:'Viewer' };
 function displayName(p){ return (p && (p.full_name || p.email)) || 'Unassigned'; }
+// Older entries can have "(not signed up)" baked into their stored
+// recorded_by_name/collected_by_name/etc. text -- it used to be part of the
+// name snapshotted at save time. Strip it once at load so no downstream
+// code (breakdowns, receipts, CSV, WhatsApp text, print reports) needs to
+// know about it.
+function stripNotSignedUp(name){
+  return (name||'').replace(/\s*\(not signed up\)\s*$/i, '');
+}
 
 // Everyone selectable as Collected By / Recorded By / a fund transfer party:
 // real signed-up accounts (store.profiles) plus reference-only people Super
@@ -119,7 +127,7 @@ function displayName(p){ return (p && (p.full_name || p.email)) || 'Unassigned';
 // store.profiles.
 function assignablePeopleOptionsHtml(){
   const profs = store.profiles.map(p=>({ id:p.id, name:displayName(p) }));
-  const ppl = store.people.map(p=>({ id:p.id, name:p.full_name+(p.profile_id?'':' (not signed up)') }));
+  const ppl = store.people.map(p=>({ id:p.id, name:p.full_name }));
   return profs.concat(ppl).map(p=>
     `<option value="${p.id}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`
   ).join('');
@@ -127,9 +135,8 @@ function assignablePeopleOptionsHtml(){
 
 // Resolve a recorded_by/collected_by id to its CURRENT display name, rather
 // than the name text snapshotted on the transaction when it was saved --
-// otherwise a "not signed up" placeholder name never updates (and splits
-// into a second bucket in per-person breakdowns) once that person links to
-// a real account and starts recording under their profile name instead.
+// otherwise a renamed/relinked person's name never updates (and splits into
+// a second bucket in per-person breakdowns) once that happens.
 function currentPersonName(id, fallbackName){
   if(!id) return fallbackName || 'Unassigned';
   const prof = store.profiles.find(p=>p.id===id);
@@ -137,7 +144,7 @@ function currentPersonName(id, fallbackName){
   const person = store.people.find(p=>p.id===id);
   if(person){
     const linked = person.profile_id ? store.profiles.find(p=>p.id===person.profile_id) : null;
-    return linked ? displayName(linked) : person.full_name+' (not signed up)';
+    return linked ? displayName(linked) : person.full_name;
   }
   return fallbackName || 'Unassigned';
 }
@@ -425,13 +432,15 @@ async function fetchAllData(){
   if(expensesRes.error) throw expensesRes.error;
 
   store.flats = flatsRes.data || [];
-  store.donations = (donationsRes.data||[]).map(d=>Object.assign({}, d, { amount:Number(d.amount) }));
+  store.donations = (donationsRes.data||[]).map(d=>Object.assign({}, d, { amount:Number(d.amount), collected_by_name: stripNotSignedUp(d.collected_by_name) }));
   store.pledges = (pledgesRes.data||[]).map(p=>Object.assign({}, p, { amount:Number(p.amount) }));
-  store.expenses = (expensesRes.data||[]).map(e=>Object.assign({}, e, { amount:Number(e.amount) }));
+  store.expenses = (expensesRes.data||[]).map(e=>Object.assign({}, e, { amount:Number(e.amount), recorded_by_name: stripNotSignedUp(e.recorded_by_name) }));
   store.settings = settingsRes.data || { committee_name:'Ganesh Pooja Committee' };
   store.sevaDays = sevaDaysRes.data || [];
   store.sevaSignups = sevaSignupsRes.data || [];
-  store.fundTransfers = (transfersRes.data||[]).map(t=>Object.assign({}, t, { amount:Number(t.amount) }));
+  store.fundTransfers = (transfersRes.data||[]).map(t=>Object.assign({}, t, {
+    amount:Number(t.amount), from_user_name: stripNotSignedUp(t.from_user_name), to_user_name: stripNotSignedUp(t.to_user_name),
+  }));
   store.budgets = (budgetsRes.data||[]).map(b=>Object.assign({}, b, { amount:Number(b.amount), pct: b.pct==null?null:Number(b.pct) }));
   store.openingBalances = (openingRes.data||[]).map(o=>Object.assign({}, o, { amount:Number(o.amount) }));
 
@@ -545,11 +554,15 @@ function computeView(){
     const isInKind = d.kind === 'in_kind';
     const amountDisplay = (isInKind && !(d.amount>0)) ? '🎁 '+(d.item_description||'Item') : fmtINR(d.amount);
     const signedDisplay = (isInKind && !(d.amount>0)) ? '🎁 '+(d.item_description||'Item') : '+'+fmtINR(d.amount);
-    const flatLabel = f ? f.label : (d.flat_id || 'Unknown / Vacated Tenant');
+    // Empty (not a placeholder string) when there's no flat -- a guest or a
+    // long-vacated tenant -- so the title below can just show their name,
+    // and so they naturally sort first wherever flatLabel is the sort key
+    // (an empty string sorts before "A001").
+    const flatLabel = f ? f.label : (d.flat_id || '');
     return {
       id:d.id, type:'in', typeLabel:'Money In',
-      title:flatLabel+' • '+d.name,
-      subtitle: isInKind ? 'In-Kind • '+(d.item_description||'Item') : 'Donation • '+d.mode,
+      title: flatLabel ? flatLabel+' - '+d.name : d.name,
+      subtitle: isInKind ? 'In-Kind - '+(d.item_description||'Item') : 'Donation - '+d.mode,
       mode: isInKind ? 'In-Kind' : d.mode, kind: d.kind, itemDescription: d.item_description,
       amount:d.amount, amountFmt:amountDisplay, amountSigned:signedDisplay, color:'#16A34A',
       date:d.date, dateFmt:fmtDate(d.date), ts:d.created_at || d.date,
@@ -565,7 +578,7 @@ function computeView(){
     return {
       id:e.id, type:'out', typeLabel:'Money Out',
       title:e.category, description:e.description,
-      subtitle:e.description+' • '+e.mode, mode:e.mode,
+      subtitle:e.description+' - '+e.mode, mode:e.mode,
       amount:e.amount, amountFmt:fmtINR(e.amount), amountSigned:'-'+fmtINR(e.amount), color:'#DC2626',
       date:e.date, dateFmt:fmtDate(e.date), ts:e.created_at || e.date,
       billUrl: e.bill_url || null,
@@ -703,17 +716,17 @@ function computeView(){
   // handed to the collector, so it shouldn't inflate their custody balance.
   donations.filter(d=>d.kind==='cash').forEach(d=>{
     addCustody(d.collected_by, d.collected_by_name, d.amount);
-    addCustodyItem(d.collected_by, 'in', { label:'Donation • '+d.name, amount:d.amount, date:d.date, dateFmt:fmtDate(d.date) });
+    addCustodyItem(d.collected_by, 'in', { label:'Donation - '+d.name, amount:d.amount, date:d.date, dateFmt:fmtDate(d.date) });
   });
   expenses.forEach(e=>{
     addCustody(e.recorded_by, e.recorded_by_name, -e.amount);
-    addCustodyItem(e.recorded_by, 'out', { label:'Expense • '+e.category+(e.description?' — '+e.description:''), amount:e.amount, date:e.date, dateFmt:fmtDate(e.date) });
+    addCustodyItem(e.recorded_by, 'out', { label:'Expense - '+e.category+(e.description?' — '+e.description:''), amount:e.amount, date:e.date, dateFmt:fmtDate(e.date) });
   });
   transfers.forEach(t=>{
     addCustody(t.from_user, t.from_user_name, -t.amount);
     addCustody(t.to_user, t.to_user_name, t.amount);
-    addCustodyItem(t.from_user, 'out', { label:'Transfer to '+(t.to_user_name||'Unassigned')+(t.note?' • '+t.note:''), amount:t.amount, date:t.date, dateFmt:fmtDate(t.date) });
-    addCustodyItem(t.to_user, 'in', { label:'Transfer from '+(t.from_user_name||'Unassigned')+(t.note?' • '+t.note:''), amount:t.amount, date:t.date, dateFmt:fmtDate(t.date) });
+    addCustodyItem(t.from_user, 'out', { label:'Transfer to '+(t.to_user_name||'Unassigned')+(t.note?' - '+t.note:''), amount:t.amount, date:t.date, dateFmt:fmtDate(t.date) });
+    addCustodyItem(t.to_user, 'in', { label:'Transfer from '+(t.from_user_name||'Unassigned')+(t.note?' - '+t.note:''), amount:t.amount, date:t.date, dateFmt:fmtDate(t.date) });
   });
   const custodyMax = Math.max(1, ...Object.values(custody).map(Math.abs), 1);
   const custodyBreakdown = Object.keys(custody)
@@ -733,7 +746,7 @@ function computeView(){
     });
 
   const recentTransfers = [...transfers].sort((a,b)=> (b.created_at>a.created_at?1:-1)).slice(0,5).map(t=>({
-    id:t.id, title: t.from_user_name+' → '+t.to_user_name, subtitle: 'Fund transfer'+(t.note?' • '+t.note:''),
+    id:t.id, title: t.from_user_name+' → '+t.to_user_name, subtitle: 'Fund transfer'+(t.note?' - '+t.note:''),
     amountFmt: fmtINR(t.amount), dateFmt: fmtDate(t.date),
   }));
 
@@ -1051,7 +1064,7 @@ function runGlobalSearch(qRaw){
   }).sort((a,b)=> (b.date>a.date?1:-1)).slice(0,6).map(d=>{
     const f = store.flats.find(x=>x.id===d.flat_id);
     return { type:'donation', id:d.id, year:yearOf(d.date),
-      title:(f?f.label:(d.flat_id||'Unknown / Vacated Tenant'))+' — '+d.name, sub:'Donation · '+fmtDate(d.date),
+      title: f ? f.label+' — '+d.name : d.name, sub:'Donation · '+fmtDate(d.date),
       amtFmt: d.amount>0 ? fmtINR(d.amount) : (d.item_description||'In-kind'), color:'#16A34A' };
   });
 
@@ -1936,7 +1949,7 @@ function openDonationModal(flatId, donationId){
   const sel = document.getElementById('donFlatSelect');
   sel.innerHTML = '<option value="">Select flat</option>' + store.flats.map(fl=>
     `<option value="${escapeHtml(fl.id)}">${escapeHtml(fl.label)} — ${escapeHtml(fl.owner||'Unassigned')}</option>`).join('')
-    + '<option value="__unknown__">🕵️ Unknown / Vacated Tenant (no flat)</option>';
+    + '<option value="__unknown__">🕵️ Guest</option>';
   sel.value = existing ? (existing.flat_id || '__unknown__') : (flatId || '');
   document.getElementById('donName').value = existing ? existing.name : (f ? (f.owner||'') : '');
   document.getElementById('donAmount').value = existing && existing.kind==='cash' ? existing.amount : '';
@@ -2667,7 +2680,7 @@ function renderBulkImportPreview(){
     const typeTag = r.source==='expense' ? '<span class="bi-row-type expense">Expense</span>'
       : r.source==='pledge' ? '<span class="bi-row-type pledge">Pledge</span>'
       : '<span class="bi-row-type donation">Donation</span>';
-    const title = r.source==='expense' ? (r.category+' — '+r.description) : (escapeHtml(r.flatLabel||'No flat')+' — '+escapeHtml(r.name));
+    const title = r.source==='expense' ? (r.category+' — '+r.description) : (r.flatLabel ? escapeHtml(r.flatLabel)+' — '+escapeHtml(r.name) : escapeHtml(r.name));
     const flatSub = r.flatCode ? ('Flat '+escapeHtml(r.flatCode)) : (r.matched ? 'No flat on record' : 'Flat '+escapeHtml('?'));
     const sub = r.source==='expense' ? fmtDate(r.date)
       : r.source==='pledge' ? (flatSub+' · promised '+fmtDate(r.date)+(r.matched?'':' — pick a flat below'))
@@ -2683,7 +2696,7 @@ function renderBulkImportPreview(){
       ? `<select class="bi-flat-picker" data-idx="${i}">
           <option value="">Assign a flat…</option>
           ${store.flats.map(fl=>`<option value="${escapeHtml(fl.id)}">${escapeHtml(fl.label)}${fl.owner?' — '+escapeHtml(fl.owner):''}</option>`).join('')}
-          ${r.source==='donation' ? '<option value="__unknown__">🕵️ Unknown / Vacated Tenant (no flat)</option>' : ''}
+          ${r.source==='donation' ? '<option value="__unknown__">🕵️ Guest</option>' : ''}
         </select>`
       : '';
     // Cross-references the donor name against donations already imported
@@ -2729,7 +2742,7 @@ function applyFlatToBulkImportRow(idx, flatId){
     // name — record the donation with no flat rather than blocking it.
     r.flatId = null;
     r.flatCode = null;
-    r.flatLabel = 'Unknown / Vacated Tenant';
+    r.flatLabel = '';
     if(!r.name) r.name = 'Unknown Donor';
     r.matched = true;
     r.isDuplicate = false;
@@ -3761,12 +3774,18 @@ function reportHeader(title){
     </div>`;
 }
 function donationsTableHtml(v){
+  // Grouped by flat (numeric-aware, so A002 sorts before A010) rather than
+  // by entry date -- makes it easy to check one flat's total at a glance
+  // instead of hunting for it across a date-ordered list. Same-flat entries
+  // then fall back to chronological order.
+  const sorted = [...v.donationsSorted].sort((a,b)=>
+    a.flatLabel.localeCompare(b.flatLabel, undefined, {numeric:true}) || a.date.localeCompare(b.date));
   return `
     <div class="report-section-title">Donations (${v.donationsSorted.length})</div>
     <table>
       <thead><tr><th>Flat / Donor</th><th>Type</th><th>Mode</th><th>Date</th><th class="num">Amount</th></tr></thead>
       <tbody>
-        ${v.donationsSorted.map(d=>`
+        ${sorted.map(d=>`
           <tr>
             <td>${escapeHtml(d.title)}</td>
             <td>${d.kind==='in_kind' ? 'In-Kind'+(d.itemDescription?' — '+escapeHtml(d.itemDescription):'') : 'Cash'}</td>
@@ -3784,12 +3803,17 @@ function expensesTableHtml(v){
     const due = e.balanceDue!=null && e.balanceDue!==0 ? ' — balance due: '+fmtINR(Math.abs(e.balanceDue)) : '';
     return `<div class="report-note">${label}${due}</div>`;
   };
+  // By actual spend date (newest first), not entry/edit order -- v.expensesSorted
+  // is ordered by created_at, so a backdated or later-edited entry (e.g. a
+  // follow-up payment logged after other, later-dated expenses) could show
+  // out of chronological sequence.
+  const sorted = [...v.expensesSorted].sort((a,b)=> b.date.localeCompare(a.date));
   return `
     <div class="report-section-title">Expenses (${v.expensesSorted.length})</div>
     <table>
       <thead><tr><th>Category</th><th>Description</th><th>Mode</th><th>Recorded By</th><th>Date</th><th class="num">Amount</th></tr></thead>
       <tbody>
-        ${v.expensesSorted.map(e=>`
+        ${sorted.map(e=>`
           <tr>
             <td>${escapeHtml(e.title)}</td>
             <td>${escapeHtml(e.description)}${e.note?`<div class="report-note">Note: ${escapeHtml(e.note)}</div>`:''}${paymentNote(e)}</td>
@@ -3801,6 +3825,14 @@ function expensesTableHtml(v){
       </tbody>
     </table>
     <div class="report-section-title">Expenses by Category</div>
+    <div class="stack-bars">
+      ${v.categoryBreakdown.map(c=>`
+        <div>
+          <div class="stack-row"><span>${escapeHtml(c.category)}</span><span class="red">${c.amountFmt}</span></div>
+          <div class="bar-track"><div class="bar-fill red" style="width:${c.pct}%"></div></div>
+        </div>
+      `).join('') || '<p class="empty-sub">No expenses recorded.</p>'}
+    </div>
     <table>
       <thead><tr><th>Category</th><th class="num">Amount</th></tr></thead>
       <tbody>
@@ -3843,6 +3875,7 @@ function budgetPerformanceHtml(v){
     </table>`;
 }
 function pledgesOutstandingHtml(v){
+  if(!v.pledgeRows.length) return '';
   return `
     <div class="report-section-title">Pledges Outstanding (${v.pledgeRows.length})</div>
     <table>
@@ -3853,7 +3886,7 @@ function pledgesOutstandingHtml(v){
             <td>${escapeHtml(p.flatLabel)} — ${escapeHtml(p.name)}</td>
             <td>${p.pledgedDateFmt}</td>
             <td class="num">${p.amountFmt}</td>
-          </tr>`).join('') || '<tr><td colspan="3">No pledges outstanding.</td></tr>'}
+          </tr>`).join('')}
       </tbody>
     </table>`;
 }
@@ -3928,12 +3961,14 @@ function buildDonationReceiptHTML(id){
     : fmtINR(d.amount);
   const rows = [
     ['Receipt No.', d.id.slice(0,8).toUpperCase()],
-    ['Flat', f?f.label:(d.flat_id||'Unknown / Vacated Tenant')],
+  ];
+  if(f) rows.push(['Flat', f.label]);
+  rows.push(
     ['Received From', d.name],
     ['Date', fmtDate(d.date)],
     ['Mode', isInKind ? 'In-Kind' : d.mode],
     ['Collected By', d.collected_by_name || '—'],
-  ];
+  );
   if(d.note) rows.push(['Note', d.note]);
   return `<div class="report-doc">
     ${reportHeader('Donation Receipt')}
@@ -3961,12 +3996,14 @@ function buildDonationReceiptText(id){
   const lines = [
     `🙏 ${store.settings.committee_name || 'Ganesh Pooja Committee'} — Donation Receipt`,
     ``,
-    `Flat: ${f?f.label:(d.flat_id||'Unknown / Vacated Tenant')}`,
+  ];
+  if(f) lines.push(`Flat: ${f.label}`);
+  lines.push(
     `Received From: ${d.name}`,
     `Amount: ${amountLine}`,
     `Date: ${fmtDate(d.date)}`,
     `Receipt No: ${d.id.slice(0,8).toUpperCase()}`,
-  ];
+  );
   if(d.note) lines.push(`Note: ${d.note}`);
   lines.push(``, `Thank you for your contribution! 🎉`);
   return lines.join('\n');
