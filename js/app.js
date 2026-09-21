@@ -3761,12 +3761,18 @@ function reportHeader(title){
     </div>`;
 }
 function donationsTableHtml(v){
+  // Grouped by flat (numeric-aware, so A002 sorts before A010) rather than
+  // by entry date -- makes it easy to check one flat's total at a glance
+  // instead of hunting for it across a date-ordered list. Same-flat entries
+  // then fall back to chronological order.
+  const sorted = [...v.donationsSorted].sort((a,b)=>
+    a.flatLabel.localeCompare(b.flatLabel, undefined, {numeric:true}) || a.date.localeCompare(b.date));
   return `
     <div class="report-section-title">Donations (${v.donationsSorted.length})</div>
     <table>
       <thead><tr><th>Flat / Donor</th><th>Type</th><th>Mode</th><th>Date</th><th class="num">Amount</th></tr></thead>
       <tbody>
-        ${v.donationsSorted.map(d=>`
+        ${sorted.map(d=>`
           <tr>
             <td>${escapeHtml(d.title)}</td>
             <td>${d.kind==='in_kind' ? 'In-Kind'+(d.itemDescription?' — '+escapeHtml(d.itemDescription):'') : 'Cash'}</td>
@@ -3784,12 +3790,17 @@ function expensesTableHtml(v){
     const due = e.balanceDue!=null && e.balanceDue!==0 ? ' — balance due: '+fmtINR(Math.abs(e.balanceDue)) : '';
     return `<div class="report-note">${label}${due}</div>`;
   };
+  // By actual spend date (newest first), not entry/edit order -- v.expensesSorted
+  // is ordered by created_at, so a backdated or later-edited entry (e.g. a
+  // follow-up payment logged after other, later-dated expenses) could show
+  // out of chronological sequence.
+  const sorted = [...v.expensesSorted].sort((a,b)=> b.date.localeCompare(a.date));
   return `
     <div class="report-section-title">Expenses (${v.expensesSorted.length})</div>
     <table>
       <thead><tr><th>Category</th><th>Description</th><th>Mode</th><th>Recorded By</th><th>Date</th><th class="num">Amount</th></tr></thead>
       <tbody>
-        ${v.expensesSorted.map(e=>`
+        ${sorted.map(e=>`
           <tr>
             <td>${escapeHtml(e.title)}</td>
             <td>${escapeHtml(e.description)}${e.note?`<div class="report-note">Note: ${escapeHtml(e.note)}</div>`:''}${paymentNote(e)}</td>
