@@ -538,7 +538,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .report-stat .rval{font-size:19px;font-weight:800;color:var(--ink)}
 .report-stat .rval.green{color:var(--green)}
 .report-stat .rval.red{color:var(--red)}
-.report-stat .rsub2{font-size:10px;color:#94A3B8;margin-top:3px;font-weight:600}
 .report-section-title{font-size:14.5px;font-weight:800;margin:26px 0 10px;padding:4px 0 8px 11px;
   border-bottom:1px solid #E2E8F0;border-left:4px solid var(--orange);color:var(--ink);
   page-break-after:avoid;break-after:avoid}
