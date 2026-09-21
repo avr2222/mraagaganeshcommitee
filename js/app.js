@@ -3748,9 +3748,12 @@ function reportHeader(title){
   const now = new Date();
   return `
     <div class="report-head">
-      <div>
-        <h1>${escapeHtml(store.settings.committee_name || 'Ganesh Pooja Committee')}</h1>
-        <div class="rsub">${escapeHtml(title)} — ${ui.year}</div>
+      <div class="report-head-brand">
+        <div class="report-head-icon"><svg width="24" height="24" viewBox="0 0 100 130" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"><path d="M50 3 C48.5 3, 47.5 4.3, 48 5.8 C48.4 7, 51.6 7, 52 5.8 C52.5 4.3, 51.5 3, 50 3 Z" fill="currentColor" stroke="none"/><ellipse cx="50" cy="11" rx="4.2" ry="2.4"/><ellipse cx="50" cy="16.5" rx="6.8" ry="2.6"/><ellipse cx="50" cy="22" rx="9.4" ry="2.8"/><path d="M32 29 C17 24, 2 32, 2 47 C2 60, 14 67, 27 62 C21 57, 17 50, 19 43 C21 35, 26 31, 32 29 Z"/><path d="M68 29 C83 24, 98 32, 98 47 C98 60, 86 67, 73 62 C79 57, 83 50, 81 43 C79 35, 74 31, 68 29 Z"/><path d="M50 26 C39 26, 32 34, 32 46 C32 54, 36 59, 41 62 L39 67 C42.5 66, 47 65, 50 65 C53 65, 57.5 66, 61 67 L59 62 C64 59, 68 54, 68 46 C68 34, 61 26, 50 26 Z"/><path d="M46 64 C40 73, 32 80, 31 91 C30 100, 38 105, 44 100 C48 97, 46 92, 42 93 C39 94, 39 98, 42 99"/><circle cx="36" cy="112" r="4.4" fill="currentColor" stroke="none"/></svg></div>
+        <div>
+          <h1>${escapeHtml(store.settings.committee_name || 'Ganesh Pooja Committee')}</h1>
+          <div class="rsub">${escapeHtml(title)} — ${ui.year}</div>
+        </div>
       </div>
       <div class="report-meta">Generated ${now.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}<br>${now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div>
     </div>`;
@@ -3767,7 +3770,7 @@ function donationsTableHtml(v){
             <td>${d.kind==='in_kind' ? 'In-Kind'+(d.itemDescription?' — '+escapeHtml(d.itemDescription):'') : 'Cash'}</td>
             <td>${escapeHtml(d.mode||'—')}</td>
             <td>${d.dateFmt}</td>
-            <td class="num">${d.amount>0 ? fmtINR(d.amount) : '—'}</td>
+            <td class="num amt-in">${d.amount>0 ? fmtINR(d.amount) : '—'}</td>
           </tr>`).join('') || '<tr><td colspan="5">No donations recorded.</td></tr>'}
       </tbody>
     </table>`;
@@ -3791,7 +3794,7 @@ function expensesTableHtml(v){
             <td>${escapeHtml(e.mode)}</td>
             <td>${escapeHtml(e.recordedByName)}</td>
             <td>${e.dateFmt}</td>
-            <td class="num">${fmtINR(e.amount)}</td>
+            <td class="num amt-out">${fmtINR(e.amount)}</td>
           </tr>`).join('') || '<tr><td colspan="6">No expenses recorded.</td></tr>'}
       </tbody>
     </table>
@@ -3799,7 +3802,7 @@ function expensesTableHtml(v){
     <table>
       <thead><tr><th>Category</th><th class="num">Amount</th></tr></thead>
       <tbody>
-        ${v.categoryBreakdown.map(c=>`<tr><td>${escapeHtml(c.category)}</td><td class="num">${c.amountFmt}</td></tr>`).join('') || '<tr><td colspan="2">No expenses recorded.</td></tr>'}
+        ${v.categoryBreakdown.map(c=>`<tr><td>${escapeHtml(c.category)}</td><td class="num amt-out">${c.amountFmt}</td></tr>`).join('') || '<tr><td colspan="2">No expenses recorded.</td></tr>'}
       </tbody>
     </table>`;
 }
@@ -3815,7 +3818,7 @@ function topDonorsHtml(v){
             <td>${i+1}</td>
             <td>${escapeHtml(d.title)}</td>
             <td>${d.dateFmt}</td>
-            <td class="num">${d.amountFmt}</td>
+            <td class="num amt-in">${d.amountFmt}</td>
           </tr>`).join('') || '<tr><td colspan="4">No cash donations recorded.</td></tr>'}
       </tbody>
     </table>`;
@@ -3831,8 +3834,8 @@ function budgetPerformanceHtml(v){
           <tr>
             <td>${escapeHtml(c.category)}</td>
             <td class="num">${c.allocatedFmt}</td>
-            <td class="num">${c.usedFmt}</td>
-            <td>${STATUS_LABEL[c.status]||''}</td>
+            <td class="num amt-out">${c.usedFmt}</td>
+            <td><span class="report-status-pill ${c.status}">${STATUS_LABEL[c.status]||''}</span></td>
           </tr>`).join('')}
       </tbody>
     </table>`;
@@ -3856,26 +3859,30 @@ function buildReportHTML(kind){
   const v = computeView();
   let stats = '';
   let body = '';
+  const statCard = (label, value, accent, valueClass) =>
+    `<div class="report-stat${accent?' accent-'+accent:''}"><div class="rlabel">${label}</div><div class="rval${valueClass?' '+valueClass:''}">${value}</div></div>`;
+  const balanceClass = v.balance<0 ? 'red' : 'green';
+  const balanceAccent = v.balance<0 ? 'red' : 'green';
   if(kind==='donations'){
     stats = `
       <div class="report-stats">
-        <div class="report-stat"><div class="rlabel">TOTAL COLLECTED (INCL. IN-KIND)</div><div class="rval">${fmtINR(v.totalCollected)}</div></div>
-        <div class="report-stat"><div class="rlabel">FLATS CONTRIBUTED</div><div class="rval">${v.contributedCount} / ${v.totalFlats}</div></div>
+        ${statCard('Total Collected (incl. in-kind)', fmtINR(v.totalCollected), 'green', 'green')}
+        ${statCard('Flats Contributed', v.contributedCount+' / '+v.totalFlats, 'orange')}
       </div>`;
     body = donationsTableHtml(v);
   } else if(kind==='expenses'){
     stats = `
       <div class="report-stats">
-        <div class="report-stat"><div class="rlabel">TOTAL EXPENSES</div><div class="rval">${fmtINR(v.totalExpenses)}</div></div>
+        ${statCard('Total Expenses', fmtINR(v.totalExpenses), 'red', 'red')}
       </div>`;
     body = expensesTableHtml(v);
   } else if(kind==='annual'){
     stats = `
       <div class="report-stats">
-        <div class="report-stat"><div class="rlabel">TOTAL COLLECTED (INCL. IN-KIND)</div><div class="rval">${fmtINR(v.totalCollected)}</div></div>
-        <div class="report-stat"><div class="rlabel">TOTAL EXPENSES</div><div class="rval">${fmtINR(v.totalExpenses)}</div></div>
-        <div class="report-stat"><div class="rlabel">BALANCE</div><div class="rval">${fmtINR(v.balance)}</div></div>
-        <div class="report-stat"><div class="rlabel">FLATS CONTRIBUTED</div><div class="rval">${v.contributedCount} / ${v.totalFlats}</div></div>
+        ${statCard('Total Collected (incl. in-kind)', fmtINR(v.totalCollected), 'green', 'green')}
+        ${statCard('Total Expenses', fmtINR(v.totalExpenses), 'red', 'red')}
+        ${statCard('Balance', fmtINR(v.balance), balanceAccent, balanceClass)}
+        ${statCard('Flats Contributed', v.contributedCount+' / '+v.totalFlats, 'orange')}
       </div>`;
     body = donationsTableHtml(v)
       + expensesTableHtml(v)
@@ -3884,10 +3891,10 @@ function buildReportHTML(kind){
   } else {
     stats = `
       <div class="report-stats">
-        <div class="report-stat"><div class="rlabel">TOTAL COLLECTED (INCL. IN-KIND)</div><div class="rval">${fmtINR(v.totalCollected)}</div></div>
-        <div class="report-stat"><div class="rlabel">TOTAL EXPENSES</div><div class="rval">${fmtINR(v.totalExpenses)}</div></div>
-        <div class="report-stat"><div class="rlabel">BALANCE</div><div class="rval">${fmtINR(v.balance)}</div></div>
-        <div class="report-stat"><div class="rlabel">FLATS CONTRIBUTED</div><div class="rval">${v.contributedCount} / ${v.totalFlats}</div></div>
+        ${statCard('Total Collected (incl. in-kind)', fmtINR(v.totalCollected), 'green', 'green')}
+        ${statCard('Total Expenses', fmtINR(v.totalExpenses), 'red', 'red')}
+        ${statCard('Balance', fmtINR(v.balance), balanceAccent, balanceClass)}
+        ${statCard('Flats Contributed', v.contributedCount+' / '+v.totalFlats, 'orange')}
       </div>`;
     body = donationsTableHtml(v) + expensesTableHtml(v);
   }
