@@ -171,16 +171,18 @@ function wireSortableHeaders(theadSelector, sortState){
     });
   });
 }
-// Updates the ▲/▼ indicator + highlight on whichever header is active.
+// Updates the ▲/▼ indicator + highlight on whichever header is active, and
+// leaves a faint ⇅ on every other sortable header -- otherwise a clickable
+// column is indistinguishable from a plain one until a user stumbles onto
+// it (only a cursor:pointer + a barely-there hover tint hinted at it).
 function updateSortHeaderUI(theadSelector, sortState){
   document.querySelectorAll(theadSelector+' th[data-sort-key]').forEach(th=>{
     const isActive = th.dataset.sortKey===sortState.key;
     th.classList.toggle('sorted', isActive);
     const existingArrow = th.querySelector('.sort-arrow');
     if(existingArrow) existingArrow.remove();
-    if(isActive){
-      th.insertAdjacentHTML('beforeend', ` <span class="sort-arrow">${sortState.dir==='asc'?'▲':'▼'}</span>`);
-    }
+    const arrow = isActive ? (sortState.dir==='asc'?'▲':'▼') : '⇅';
+    th.insertAdjacentHTML('beforeend', ` <span class="sort-arrow${isActive?'':' idle'}">${arrow}</span>`);
   });
 }
 
