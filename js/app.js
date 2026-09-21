@@ -3812,6 +3812,14 @@ function expensesTableHtml(v){
       </tbody>
     </table>
     <div class="report-section-title">Expenses by Category</div>
+    <div class="stack-bars">
+      ${v.categoryBreakdown.map(c=>`
+        <div>
+          <div class="stack-row"><span>${escapeHtml(c.category)}</span><span class="red">${c.amountFmt}</span></div>
+          <div class="bar-track"><div class="bar-fill red" style="width:${c.pct}%"></div></div>
+        </div>
+      `).join('') || '<p class="empty-sub">No expenses recorded.</p>'}
+    </div>
     <table>
       <thead><tr><th>Category</th><th class="num">Amount</th></tr></thead>
       <tbody>

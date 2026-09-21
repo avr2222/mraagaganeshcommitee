@@ -551,6 +551,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .report-doc td.amt-out{color:var(--red);font-weight:700}
 .report-doc tbody tr{page-break-inside:avoid;break-inside:avoid}
 .report-doc tbody tr:nth-child(even){background:#FBFBFC}
+.report-doc .stack-bars{margin:4px 0 20px;padding:14px 16px;border:1px solid #E2E8F0;border-radius:10px}
+.report-doc .stack-bars>div{page-break-inside:avoid;break-inside:avoid}
 .report-note{font-size:10.5px;color:#94A3B8;margin-top:2px}
 .report-status-pill{display:inline-block;font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;letter-spacing:.02em}
 .report-status-pill.ok{background:#DCFCE7;color:var(--green)}
