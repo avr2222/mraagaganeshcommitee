@@ -908,9 +908,6 @@ function renderDashboard(v){
   if(!hasData) return;
 
   document.getElementById('statCollected').textContent = fmtINR(v.totalCollected);
-  const inKindHint = document.getElementById('statInKindHint');
-  inKindHint.classList.toggle('hidden', !v.inKindValue);
-  inKindHint.textContent = v.inKindValue ? 'Includes '+fmtINR(v.inKindValue)+' in-kind (est. value, not cash)' : '';
   document.getElementById('statExpenses').textContent = fmtINR(v.totalExpenses);
   document.getElementById('statBalance').textContent = fmtINR(v.balance);
   document.getElementById('statFlats').textContent = v.contributedCount+' / '+v.totalFlats;
@@ -3899,15 +3896,14 @@ function buildReportHTML(kind){
   // In-kind contributions are estimated value, not cash received; they
   // still show individually in the Donations table, just not folded into
   // this headline figure.
-  const statCard = (label, value, accent, valueClass, sub) =>
-    `<div class="report-stat${accent?' accent-'+accent:''}"><div class="rlabel">${label}</div><div class="rval${valueClass?' '+valueClass:''}">${value}</div>${sub?`<div class="rsub2">${sub}</div>`:''}</div>`;
-  const collectedSub = v.inKindValue ? '+ '+fmtINR(v.inKindValue)+' in-kind (est., not cash)' : '';
+  const statCard = (label, value, accent, valueClass) =>
+    `<div class="report-stat${accent?' accent-'+accent:''}"><div class="rlabel">${label}</div><div class="rval${valueClass?' '+valueClass:''}">${value}</div></div>`;
   const balanceClass = v.balance<0 ? 'red' : 'green';
   const balanceAccent = v.balance<0 ? 'red' : 'green';
   if(kind==='donations'){
     stats = `
       <div class="report-stats">
-        ${statCard('Total Collected', fmtINR(v.cashCollected), 'green', 'green', collectedSub)}
+        ${statCard('Total Collected', fmtINR(v.cashCollected), 'green', 'green')}
         ${statCard('Flats Contributed', v.contributedCount+' / '+v.totalFlats, 'orange')}
       </div>`;
     body = donationsTableHtml(v);
@@ -3920,7 +3916,7 @@ function buildReportHTML(kind){
   } else if(kind==='annual'){
     stats = `
       <div class="report-stats">
-        ${statCard('Total Collected', fmtINR(v.cashCollected), 'green', 'green', collectedSub)}
+        ${statCard('Total Collected', fmtINR(v.cashCollected), 'green', 'green')}
         ${statCard('Total Expenses', fmtINR(v.totalExpenses), 'red', 'red')}
         ${statCard('Balance', fmtINR(v.balance), balanceAccent, balanceClass)}
         ${statCard('Flats Contributed', v.contributedCount+' / '+v.totalFlats, 'orange')}
@@ -3932,7 +3928,7 @@ function buildReportHTML(kind){
   } else {
     stats = `
       <div class="report-stats">
-        ${statCard('Total Collected', fmtINR(v.cashCollected), 'green', 'green', collectedSub)}
+        ${statCard('Total Collected', fmtINR(v.cashCollected), 'green', 'green')}
         ${statCard('Total Expenses', fmtINR(v.totalExpenses), 'red', 'red')}
         ${statCard('Balance', fmtINR(v.balance), balanceAccent, balanceClass)}
         ${statCard('Flats Contributed', v.contributedCount+' / '+v.totalFlats, 'orange')}
