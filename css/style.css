@@ -105,6 +105,7 @@ button:disabled{opacity:.55;cursor:default;pointer-events:none}
 .stat-value.blue,.blue{color:var(--blue)}
 .stat-value.orange,.orange{color:var(--orange)}
 .stat-value.teal,.teal{color:var(--teal)}
+#statInKindHint{font-size:10.5px}
 
 .panel{background:#fff;border:1px solid var(--slate-200);border-radius:16px;padding:20px;margin-bottom:20px}
 .panel-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px}
