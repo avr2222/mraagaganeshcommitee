@@ -3862,6 +3862,7 @@ function budgetPerformanceHtml(v){
     </table>`;
 }
 function pledgesOutstandingHtml(v){
+  if(!v.pledgeRows.length) return '';
   return `
     <div class="report-section-title">Pledges Outstanding (${v.pledgeRows.length})</div>
     <table>
@@ -3872,7 +3873,7 @@ function pledgesOutstandingHtml(v){
             <td>${escapeHtml(p.flatLabel)} — ${escapeHtml(p.name)}</td>
             <td>${p.pledgedDateFmt}</td>
             <td class="num">${p.amountFmt}</td>
-          </tr>`).join('') || '<tr><td colspan="3">No pledges outstanding.</td></tr>'}
+          </tr>`).join('')}
       </tbody>
     </table>`;
 }
