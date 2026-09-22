@@ -547,7 +547,7 @@ function computeView(){
   const contributedCount = store.flats.filter(f=>contributedIds.has(f.id)).length;
   const notContributedCount = totalFlats - contributedCount;
   const contributedPct = totalFlats ? Math.round(contributedCount/totalFlats*100) : 0;
-  const maxIE = Math.max(totalCollected, totalExpenses, 1);
+  const maxIE = Math.max(cashCollected, totalExpenses, 1);
 
   const donationTx = donations.map(d=>{
     const f = store.flats.find(x=>x.id===d.flat_id);
@@ -907,7 +907,7 @@ function renderDashboard(v){
 
   if(!hasData) return;
 
-  document.getElementById('statCollected').textContent = fmtINR(v.totalCollected);
+  document.getElementById('statCollected').textContent = fmtINR(v.cashCollected);
   document.getElementById('statExpenses').textContent = fmtINR(v.totalExpenses);
   document.getElementById('statBalance').textContent = fmtINR(v.balance);
   document.getElementById('statFlats').textContent = v.contributedCount+' / '+v.totalFlats;
@@ -955,9 +955,9 @@ function renderDashboard(v){
 
   renderSevaProgress(v);
 
-  document.getElementById('incomeAmt').textContent = fmtINR(v.totalCollected);
+  document.getElementById('incomeAmt').textContent = fmtINR(v.cashCollected);
   document.getElementById('expenseAmt').textContent = fmtINR(v.totalExpenses);
-  document.getElementById('incomeBar').style.width = Math.round(v.totalCollected/v.maxIE*100)+'%';
+  document.getElementById('incomeBar').style.width = Math.round(v.cashCollected/v.maxIE*100)+'%';
   document.getElementById('expenseBar').style.width = Math.round(v.totalExpenses/v.maxIE*100)+'%';
 
   document.getElementById('custodyBreakdown').innerHTML = v.custodyBreakdown.map(c=>`
